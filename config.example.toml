@@ -1,0 +1,29 @@
+# Copy to config.toml (next to the app) to change settings, or use the app's Settings page.
+# Every setting is optional.
+
+# SpeedRunIGT's global folder (contains records/)
+# speedrunigt_dir = "~/speedrunigt"
+
+# Where runs.csv, sessions.csv and stats.csv are written, relative to the app's folder
+# output_dir = "data"
+
+# A gap longer than this between runs starts a new session
+# session_gap_minutes = 30
+
+# Also track set seed runs (not on the Settings page)
+# include_set_seed = false
+
+# Instances to track. Every instance writes to the same SpeedRunIGT records folder, so
+# records are matched by world name (regex). Each instance gets its own folder:
+# data/<name>/runs.csv. Records matching no instance are ignored.
+# Default: just the RSG instance below.
+# minecraft_dir is the instance's .minecraft folder; its logs/ are used to tell death resets
+# (respawn at a bed/anchor) from accidental deaths. Defaults to the Prism Launcher instance
+# with the same name, if there is one.
+# [instances.speedrun]
+# world_name_pattern = '^Random Speedrun #\d+$'
+# minecraft_dir = '~/AppData/Roaming/PrismLauncher/instances/speedrun/minecraft'
+#
+# [instances.ranked]
+# world_name_pattern = '^(New World|mcsrranked)'
+# minecraft_dir = '~/AppData/Roaming/PrismLauncher/instances/MCSRRanked-Windows-1.16.1-Basic/minecraft'

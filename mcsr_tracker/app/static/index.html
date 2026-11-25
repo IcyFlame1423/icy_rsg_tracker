@@ -1,0 +1,275 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>MCSR Tracker</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><rect x='2' y='2' width='12' height='12' rx='2' fill='%233987e5'/></svg>">
+  <link rel="stylesheet" href="/app.css">
+  <script type="module" src="/app.js"></script>
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">MCSR Tracker</div>
+    <nav class="tabs" aria-label="Pages">
+      <a href="#dashboard" class="tab">Dashboard</a>
+      <a href="#runs" class="tab">Runs</a>
+      <a href="#sessions" class="tab">Sessions</a>
+      <a href="#splits" class="tab">Splits</a>
+      <a href="#settings" class="tab">Settings</a>
+    </nav>
+    <label class="instance-picker" hidden>
+      <span class="sr-only">Instance</span>
+      <select id="instance"></select>
+    </label>
+    <div class="status" id="status" role="status" aria-live="polite">
+      <span class="status-dot" aria-hidden="true"></span><span class="status-text">Connecting…</span>
+    </div>
+    <div class="player" id="player" hidden>
+      <span class="player-head" id="player-head" aria-hidden="true"><span class="face"></span><span class="hat"></span></span>
+      <span class="player-name" id="player-name"></span>
+    </div>
+  </header>
+
+  <div class="page">
+    <!-- Sessions page, above the filters: trends over every session (not windowed). -->
+    <section id="top-sessions" class="page-top" hidden>
+      <h1 class="page-title">Session statistics</h1>
+      <div class="stats-period-row">
+        <div class="segmented" id="stats-period" role="group" aria-label="Session statistics period">
+          <button type="button" data-period="7d">7 days</button>
+          <button type="button" data-period="30d">30 days</button>
+          <button type="button" data-period="1y">1 year</button>
+          <button type="button" data-period="all">All time</button>
+        </div>
+        <p class="sub" id="stats-period-note"></p>
+      </div>
+      <div class="tiles six" id="session-stat-tiles"></div>
+      <div class="grid-2">
+        <section class="card">
+          <div class="card-head">
+            <h2 id="session-metric-title">Nethers per hour <span class="sub">by session</span></h2>
+            <label class="select-label">
+              <span class="sr-only">Measure</span>
+              <select id="session-metric"></select>
+            </label>
+          </div>
+          <div class="chart" id="chart-session-metric"></div>
+        </section>
+        <section class="card">
+          <div class="card-head">
+            <h2>Average split time <span class="sub">by session</span></h2>
+            <div class="card-controls">
+              <div class="segmented small" id="trend-mode" role="group" aria-label="Split times measured">
+                <button type="button" data-mode="total">From beginning</button>
+                <button type="button" data-mode="segment">From previous split</button>
+              </div>
+              <label class="select-label">
+                <span class="sr-only">Split</span>
+                <select id="trend-split"></select>
+              </label>
+            </div>
+          </div>
+          <div class="chart" id="chart-split"></div>
+        </section>
+      </div>
+      <h2 class="section-title">Sessions</h2>
+    </section>
+
+    <!-- One filter row; it scopes everything below it. -->
+    <div class="filters">
+      <div class="window-filters" id="window-filters" role="group" aria-label="Time window">
+        <div class="segmented" id="window">
+          <button type="button" data-window="last_session" aria-pressed="true">Last session</button>
+          <button type="button" data-window="today">Today</button>
+          <button type="button" data-window="7d">7 days</button>
+          <button type="button" data-window="30d">30 days</button>
+          <button type="button" data-window="1y">1 year</button>
+          <button type="button" data-window="all">All time</button>
+          <button type="button" data-window="custom">Custom</button>
+        </div>
+        <div class="custom-range" id="custom-range" hidden>
+          <label>From <input type="date" id="range-start"></label>
+          <label>To <input type="date" id="range-end"></label>
+        </div>
+      </div>
+      <div class="page-filters" id="page-filters"></div>
+      <div class="window-note" id="window-note"></div>
+    </div>
+
+    <!-- Dashboard -->
+    <main id="page-dashboard">
+      <div id="dashboard-content">
+        <section class="kpis" aria-label="Headline numbers">
+          <div class="card hero">
+            <div class="hero-art" id="hero-art" aria-hidden="true"></div>
+            <div class="label">Nethers per hour</div>
+            <div class="hero-value" id="hero-value">–</div>
+            <div class="sub" id="hero-sub"></div>
+          </div>
+          <div class="tiles" id="tiles"></div>
+        </section>
+
+        <div class="grid-2">
+          <section class="card">
+            <div class="card-head">
+              <h2>Split progression</h2>
+              <div class="segmented small" id="progression-base" role="group" aria-label="Percentages out of">
+                <button type="button" data-base="runs">Of runs played</button>
+                <button type="button" data-base="previous">Of previous split</button>
+              </div>
+            </div>
+            <p class="sub" id="progression-note"></p>
+            <div class="meters" id="meters"></div>
+            <p class="sub footnote">Structure 1 and 2: the first and second of bastion/fortress entered, in either order.</p>
+          </section>
+          <section class="card">
+            <h2>Split times <span class="sub">(in-game)</span></h2>
+            <table class="data-table" id="split-table">
+              <thead><tr><th scope="col">Split</th><th scope="col" class="num">Reached</th><th scope="col" class="num">Average</th><th scope="col" class="num">Median</th><th scope="col" class="num">Best</th></tr></thead>
+              <tbody></tbody>
+            </table>
+          </section>
+        </div>
+
+        <section class="card spaced">
+          <div class="card-head">
+            <h2>Recent runs</h2>
+            <div class="card-filters" id="recent-filters"></div>
+          </div>
+          <div id="recent-runs"></div>
+          <div class="card-foot"><span class="sub" id="recent-note"></span><a href="#runs" id="recent-all">All matching runs →</a></div>
+        </section>
+      </div>
+      <div class="empty" id="dashboard-empty" hidden></div>
+    </main>
+
+    <!-- Runs -->
+    <main id="page-runs" hidden>
+      <section class="card">
+        <div id="runs-table"></div>
+        <div class="empty" id="runs-empty" hidden></div>
+      </section>
+    </main>
+
+    <!-- Sessions -->
+    <main id="page-sessions" hidden>
+      <section class="card" id="sessions-list">
+        <div id="sessions-table"></div>
+      </section>
+      <div id="session-detail" hidden>
+        <a href="#sessions" class="back-link">← All sessions</a>
+        <h1 id="session-title" class="page-title"></h1>
+        <p class="sub" id="session-sub"></p>
+        <div id="session-body">
+          <div class="tiles six" id="session-tiles"></div>
+          <section class="card spaced">
+            <h2>Timeline</h2>
+            <p class="sub">Each run: time of day against the in-game time when it ended.</p>
+            <div class="chart" id="session-timeline"></div>
+          </section>
+          <section class="card spaced">
+            <h2>Runs</h2>
+            <div id="session-runs"></div>
+          </section>
+        </div>
+      </div>
+    </main>
+
+    <!-- One run: #run/<run_id> -->
+    <main id="page-run" hidden>
+      <div class="run-nav">
+        <a href="#runs" class="back-link" id="run-back">← Runs</a>
+        <span class="run-steps" id="run-steps"></span>
+      </div>
+      <h1 id="run-title" class="page-title"></h1>
+      <p class="sub" id="run-sub"></p>
+      <div id="run-body">
+        <p class="notice" id="run-cheats" hidden></p>
+        <div class="tiles four" id="run-tiles"></div>
+        <section class="card spaced">
+          <div class="card-head">
+            <h2>Splits</h2>
+            <div class="segmented small" id="run-compare" role="group" aria-label="Compare with">
+              <button type="button" data-compare="all">All runs</button>
+              <button type="button" data-compare="session">This session</button>
+            </div>
+          </div>
+          <p class="sub" id="run-compare-note"></p>
+          <div class="table-scroll"><table class="data-table" id="run-splits"></table></div>
+          <p class="sub footnote">Segment: time since the previous split. vs average: green is faster than your average, red slower.</p>
+        </section>
+        <section class="card spaced resources-card" id="run-resources-card" aria-label="Resources collected">
+          <div class="resources" id="run-resources"></div>
+          <p class="sub footnote" id="run-resources-note"></p>
+          <div class="explainer" id="run-resources-explainer" hidden></div>
+        </section>
+        <section class="card spaced">
+          <h2>Deaths</h2>
+          <p class="sub" id="run-deaths-note"></p>
+          <div class="tiles" id="run-deaths"></div>
+        </section>
+        <section class="card spaced">
+          <h2>Achievements</h2>
+          <p class="sub" id="run-adv-note"></p>
+          <div class="table-scroll"><table class="data-table" id="run-advancements"></table></div>
+        </section>
+      </div>
+    </main>
+
+    <!-- Splits -->
+    <main id="page-splits" hidden>
+      <div id="splits-content">
+        <h1 class="page-title" id="splits-title"></h1>
+        <p class="sub" id="splits-mode-note"></p>
+        <div class="tiles five" id="splits-tiles"></div>
+        <div class="grid-2">
+          <section class="card">
+            <h2>Distribution</h2>
+            <p class="sub" id="splits-hist-note"></p>
+            <div class="chart" id="splits-histogram"></div>
+          </section>
+          <section class="card">
+            <h2>Top 10</h2>
+            <table class="data-table" id="splits-top">
+              <thead><tr><th scope="col"><span class="sr-only">Open run</span></th><th scope="col" class="num">#</th><th scope="col" class="num">Time</th><th scope="col">Date</th><th scope="col" class="num">Session</th><th scope="col" class="num">World</th></tr></thead>
+              <tbody></tbody>
+            </table>
+          </section>
+        </div>
+        <section class="card spaced">
+          <h2>Over time</h2>
+          <p class="sub" id="splits-over-time-note"></p>
+          <div class="chart" id="splits-over-time"></div>
+        </section>
+      </div>
+      <div class="empty" id="splits-empty" hidden></div>
+    </main>
+
+    <!-- Settings -->
+    <main id="page-settings" hidden>
+      <h1 class="page-title">Settings</h1>
+      <section class="card spaced">
+        <h2>Tracking</h2>
+        <div class="form" id="settings-general"></div>
+      </section>
+      <section class="card spaced">
+        <h2>Instances</h2>
+        <p class="sub">Every Minecraft instance saves runs to the same SpeedRunIGT folder, so each run is matched to an instance by its world name.</p>
+        <div class="form" id="settings-instances"></div>
+      </section>
+      <section class="card spaced">
+        <h2>Data</h2>
+        <div id="settings-data"></div>
+      </section>
+      <div class="save-bar">
+        <span class="settings-message" id="settings-message" role="status" aria-live="polite"></span>
+        <button type="button" class="button" id="settings-revert">Undo changes</button>
+        <button type="button" class="button primary" id="settings-save">Save</button>
+      </div>
+    </main>
+  </div>
+
+  <div class="tooltip" id="tooltip" role="tooltip" hidden></div>
+</body>
+</html>
