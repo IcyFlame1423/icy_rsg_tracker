@@ -196,17 +196,28 @@ def runs(store, instance_name, window, start=None, end=None, now=None, session=N
             t = split_time(row, name)
             if t is not None and (name not in pbs or t < pbs[name]["ms"]):
                 pbs[name] = {"ms": t, "run_id": row["run_id"]}
-    # Best segment (time from the previous split in PROGRESSION) for each split after the nether.
-    segment_pbs = {}
+    # Best in-game time for each advancement any run has got.
+    advancement_pbs = {}
+    # Best time from one split to a later split or advancement ("adv:<id>"):
+    # {from split: {target: {ms, run_id}}}, from runs that reached both. An advancement can come
+    # before the split: its time is then negative.
+    from_pbs = {name: {} for name in PROGRESSION[:-1]}
     for row in all_rows:
-        times = {name: split_time(row, name) for name in PROGRESSION}
-        for prev, name in zip(PROGRESSION, PROGRESSION[1:]):
-            if times[name] is not None and times[prev] is not None:
-                t = times[name] - times[prev]
-                if name not in segment_pbs or t < segment_pbs[name]["ms"]:
-                    segment_pbs[name] = {"ms": t, "run_id": row["run_id"]}
+        splits = [(name, t) for name in PROGRESSION if (t := split_time(row, name)) is not None]
+        advs = [(f"adv:{name}", parse_time(row[name])) for name in ADVANCEMENTS if row[name]]
+        for name, t in advs:
+            if name[4:] not in advancement_pbs or t < advancement_pbs[name[4:]]["ms"]:
+                advancement_pbs[name[4:]] = {"ms": t, "run_id": row["run_id"]}
+        for i, (start, s) in enumerate(splits):
+            if start == "finish":
+                continue
+            for target, t in splits[i + 1:] + advs:
+                best = from_pbs[start].get(target)
+                if best is None or t - s < best["ms"]:
+                    from_pbs[start][target] = {"ms": t - s, "run_id": row["run_id"]}
     return {"instance": instance_name, "window": window, "total_runs": len(all_rows),
-            "runs": [run_json(r) for r in rows], "pbs": pbs, "segment_pbs": segment_pbs,
+            "runs": [run_json(r) for r in rows], "pbs": pbs, "from_pbs": from_pbs,
+            "advancement_pbs": advancement_pbs,
             "advancements": [{"id": a, "name": NAMES[a]} for a in ADVANCEMENTS]}
 
 

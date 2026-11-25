@@ -93,7 +93,7 @@ export function createRunsTable(container, { storageKey, hide = [], sort = { id:
 
   function buildPicker() {
     const cols = allColumns(data.pbs, data.advancements).filter((c) => !hide.includes(c.id));
-    const groups = [["Run"], ["Splits"], ["Deaths"], ...TABS.map(([key, name]) => [`adv:${key}`, `Achievements: ${name}`])];
+    const groups = [["Run"], ["Splits"], ["Deaths"], ...TABS.map(([key, name]) => [`adv:${key}`, `Advancements: ${name}`])];
     panel.replaceChildren(
       h("div", { class: "picker-actions" },
         h("button", { type: "button", class: "link", onclick: () => setVisible(DEFAULT_COLUMNS) }, "Reset to default")),

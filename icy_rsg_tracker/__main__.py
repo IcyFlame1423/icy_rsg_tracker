@@ -1,16 +1,24 @@
-"""Command line: python -m mcsr_tracker <command>"""
+"""Command line: python -m icy_rsg_tracker <command>"""
 
 import argparse
 import sys
 
-from .config import load_config
+from . import __version__
+from .config import PROJECT_DIR, load_config
 from .importer import import_records
 from .watch import watch
 
 
 def main(argv=None):
-    parser = argparse.ArgumentParser(prog="mcsr_tracker", description="MCSR RSG run tracker")
+    if sys.stdout is None:  # no console: started by pythonw or the windowed .exe
+        try:
+            log = open(PROJECT_DIR / "tracker.log", "w", encoding="utf-8", buffering=1)
+            sys.stdout = sys.stderr = log
+        except OSError:
+            pass
+    parser = argparse.ArgumentParser(prog="icy_rsg_tracker", description="Icy RSG Tracker")
     parser.add_argument("--config", help="path to config.toml")
+    parser.add_argument("--version", action="version", version=f"Icy RSG Tracker {__version__}")
     sub = parser.add_subparsers(dest="command")
 
     imp = sub.add_parser("import", help="add new SpeedRunIGT records to runs.csv and update stats")

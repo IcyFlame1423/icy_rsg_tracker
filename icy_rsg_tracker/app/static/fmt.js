@@ -5,6 +5,7 @@ const pad = (n, w = 2) => String(n).padStart(w, "0");
 /** 223955 -> "3:43.955" */
 export function time(ms) {
   if (ms == null) return "–";
+  if (ms < 0) return `-${time(-ms)}`;  // e.g. an advancement before the split it's timed from
   const m = Math.floor(ms / 60000), s = Math.floor((ms % 60000) / 1000), r = ms % 1000;
   return `${m}:${pad(s)}.${pad(r, 3)}`;
 }
@@ -12,6 +13,7 @@ export function time(ms) {
 /** 223955 -> "3:44.0" (for averages, where milliseconds are false precision) */
 export function timeTenths(ms) {
   if (ms == null) return "–";
+  if (ms < 0) return `-${timeTenths(-ms)}`;
   const tenths = Math.round(ms / 100);
   const m = Math.floor(tenths / 600), s = Math.floor((tenths % 600) / 10), t = tenths % 10;
   return `${m}:${pad(s)}.${t}`;
@@ -19,6 +21,7 @@ export function timeTenths(ms) {
 
 /** 223955 -> "3:44" (axis ticks) */
 export function timeShort(ms) {
+  if (ms < 0) return `-${timeShort(-ms)}`;
   const total = Math.round(ms / 1000);
   return `${Math.floor(total / 60)}:${pad(total % 60)}`;
 }

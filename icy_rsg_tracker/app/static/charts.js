@@ -253,18 +253,19 @@ export function scatterChart(container, points, opts) {
   let x0 = Math.min(...xs), x1 = Math.max(...xs);
   if (opts.xAxis === "index") { x0 -= 0.5; x1 += 0.5; }
   else if (x1 - x0 < 60_000) { x0 -= 30_000; x1 += 30_000; }
-  const yt = ticks(0, Math.max(...ys, ...(opts.line ?? []).map((p) => p.y), 1000), 4, TIME_STEPS);
-  const yMax = yt.at(-1);
+  // From 0, or below it when there are negative times (an advancement before the split).
+  const yt = ticks(Math.min(0, ...ys), Math.max(...ys, ...(opts.line ?? []).map((p) => p.y), 1000), 4, TIME_STEPS);
+  const yMin = yt[0], yMax = yt.at(-1);
   const tickText = yt.map((v) => opts.yTickFormat(v));
   const m = { top: 10, right: 16, bottom: 26, left: 10 + Math.max(...tickText.map((t) => t.length)) * 6.5 };
   const pw = width - m.left - m.right, ph = height - m.top - m.bottom;
   const x = (v) => m.left + ((v - x0) / (x1 - x0)) * pw;
-  const y = (v) => m.top + ph - (v / yMax) * ph;
+  const y = (v) => m.top + ph - ((v - yMin) / (yMax - yMin)) * ph;
 
   const svg = el("svg", { viewBox: `0 0 ${width} ${height}`, width, height, tabindex: 0, role: "img",
                           "aria-label": `${opts.name}. Use arrow keys to step through runs.` }, container);
   yt.forEach((v, i) => {
-    el("line", { class: i === 0 ? "baseline" : "gridline", x1: m.left, x2: m.left + pw, y1: y(v), y2: y(v) }, svg);
+    el("line", { class: v === 0 ? "baseline" : "gridline", x1: m.left, x2: m.left + pw, y1: y(v), y2: y(v) }, svg);
     el("text", { class: "tick", x: m.left - 8, y: y(v) + 4, "text-anchor": "end" }, svg).textContent = tickText[i];
   });
   const span = x1 - x0;

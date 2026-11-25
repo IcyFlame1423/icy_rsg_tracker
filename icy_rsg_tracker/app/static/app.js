@@ -1,6 +1,7 @@
 // App shell: page routing, the shared time-window filter, status bar and live refresh.
 import * as fmt from "./fmt.js";
-import { $, getJSON, state } from "./common.js";
+import { $, getJSON, h, state } from "./common.js";
+import { blockImage, icon } from "./icons.js";
 import { dashboard } from "./dashboard.js";
 import { runsPage } from "./runs.js";
 import { sessionsPage } from "./sessions.js";
@@ -64,6 +65,30 @@ async function load() {
 
 // ---- Status bar + live refresh ----
 
+// This tab, to the tracker: it stops tracking once no dashboard tab is open.
+const PAGE_ID = crypto.randomUUID?.() ?? String(Math.random()).slice(2);
+let stopped = false;
+window.addEventListener("pagehide", () => {
+  if (stopped) return;
+  fetch("/api/closed", { method: "POST", keepalive: true, headers: { "Content-Type": "application/json" },
+                         body: JSON.stringify({ page: PAGE_ID }) }).catch(() => {});
+});
+
+/** Stop tracking: shut the tracker down, then close the tab (or say it can be closed). */
+async function stopTracking() {
+  if (!confirm("Stop tracking? Runs you play after this won't be added until you start the tracker again.")) return;
+  stopped = true;
+  try {
+    await fetch("/api/stop", { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" });
+  } catch { /* already gone */ }
+  window.close();  // browsers only allow this for some tabs
+  document.body.replaceChildren(h("main", { class: "stopped" },
+    h("h1", {}, "Tracking stopped"),
+    h("p", {}, "You can close this tab. To track again, start Icy RSG Tracker again; runs you play in " +
+      "the meantime are added then.")));
+}
+$("stop-tracking").addEventListener("click", stopTracking);
+
 function setStatus(kind, text) {
   $("status").dataset.state = kind;
   $("status").querySelector(".status-text").textContent = text;
@@ -71,10 +96,19 @@ function setStatus(kind, text) {
 
 async function pollStatus() {
   try {
-    const st = await getJSON("/api/status");
+    if (stopped) return;
+    const st = await getJSON(`/api/status?page=${encodeURIComponent(PAGE_ID)}`);
+    $("stop-tracking").hidden = !st.tracking;
     const iconsChanged = !!st.textures !== state.textures;
     state.textures = !!st.textures;
+    if (iconsChanged || !$("app-logo").firstChild) {
+      $("app-logo").replaceChildren(icon("logo") ?? "");
+      blockImage("logo")?.then((url) => { document.querySelector('link[rel="icon"]').href = url; }, () => {});
+    }
     syncInstances(st.instances);
+    $("app-version").textContent = st.app_version ? `v${st.app_version}` : "";
+    ongoing = st.ongoing ?? {};
+    showSessionState();
     if (iconsChanged && route) {  // the game's files turned up (or went): redraw with(out) icons
       $("page-filters").replaceChildren(...(route.page.filters?.() ?? []));
       if (state.version != null) await load();
@@ -88,11 +122,23 @@ async function pollStatus() {
       await load();
     }
   } catch {
-    setStatus("error", "Tracker not running. Start it with track.bat");
+    $("stop-tracking").hidden = true;
+    setStatus("error", "Tracker not running. Start Icy RSG Tracker again to keep tracking.");
   }
 }
 
 let knownInstances = "";
+
+let ongoing = {};
+
+/** The "Last session" button: a green dot and "Ongoing session" while the latest session is still going. */
+function showSessionState() {
+  const live = !!ongoing[state.instance];
+  const button = document.querySelector('#window [data-window="last_session"]');
+  button.querySelector(".live-dot").classList.toggle("on", live);
+  button.querySelector(".session-label").textContent = live ? "Ongoing session" : "Last session";
+  button.title = live ? "The session you're playing now" : "No session going on now: your most recent one";
+}
 
 /** Keep the instance picker in step with the server's instances (they can change in Settings). */
 function syncInstances(names) {
@@ -133,6 +179,7 @@ async function showPlayer() {
 $("instance").addEventListener("change", (e) => {
   state.instance = e.target.value;
   localStorage.setItem("instance", state.instance);
+  showSessionState();
   showPlayer();
   load();
 });

@@ -6,10 +6,10 @@ import unittest
 from datetime import datetime
 from pathlib import Path
 
-from mcsr_tracker.app import data
-from mcsr_tracker.app.server import App, serve
-from mcsr_tracker.config import Config
-from mcsr_tracker.importer import import_records
+from icy_rsg_tracker.app import data
+from icy_rsg_tracker.app.server import App, serve
+from icy_rsg_tracker.config import Config
+from icy_rsg_tracker.importer import import_records
 
 from .test_tracker import T0, make_record
 
@@ -97,11 +97,18 @@ class DataTest(AppTestBase):
         self.assertEqual(r["pbs"]["nether"], {"ms": 50_000, "run_id": "a"})
         self.assertNotIn("finish", r["pbs"])
         self.assertNotIn("structure1", r["pbs"])  # no run entered a bastion or fortress
-        self.assertEqual(r["segment_pbs"], {})  # no run reached two splits
+        self.assertEqual(r["from_pbs"]["nether"], {})  # no run reached two splits
         # PBs are all-time even when the window is narrower.
         self.assertEqual(data.runs(self.store, "speedrun", "last_session")["pbs"], r["pbs"])
         self.assertEqual(len(r["advancements"]), 80)
         self.assertIn({"id": "story/iron_tools", "name": "Isn't It Iron Pick"}, r["advancements"])
+        # Best time for each advancement any run got.
+        best = {}
+        for run in r["runs"]:
+            for adv, ms in run["advancements"].items():
+                if adv not in best or ms < best[adv]["ms"]:
+                    best[adv] = {"ms": ms, "run_id": run["run_id"]}
+        self.assertEqual(r["advancement_pbs"], best)
 
     def test_run_detail(self):
         d = data.run_detail(self.store, "speedrun", "a")
@@ -170,6 +177,48 @@ class ServerTest(AppTestBase):
         self.assertEqual(len(json.loads(body)["sessions"]), 2)
         status, _, body = self.get("/api/status")
         self.assertEqual(json.loads(body)["instances"], ["speedrun"])
+        st = json.loads(body)
+        from icy_rsg_tracker import __version__
+        self.assertEqual(st["app_version"], __version__)
+        self.assertIn("speedrun", st["ongoing"])
+
+    def test_stops_when_the_last_tab_closes(self):
+        from icy_rsg_tracker.app.server import CLOSE_GRACE, PAGE_TIMEOUT
+        stops = []
+        self.app.on_stop = lambda: stops.append(1)
+        self.app.auto_stop = True
+        self.app.check_pages(now=0)
+        self.assertFalse(self.app.stop.is_set())  # no tab yet: keep waiting for one
+        self.app.status("tab1")
+        self.app.status("tab2")
+        self.app.page_closed("tab1")
+        self.app.check_pages(now=self.app.last_close + CLOSE_GRACE + 1)
+        self.assertFalse(self.app.stop.is_set())  # tab2 is still open
+        self.app.page_closed("tab2")
+        self.app.check_pages(now=self.app.last_close + 1)
+        self.assertFalse(self.app.stop.is_set())  # maybe a refresh: wait for it to reconnect
+        self.app.status("tab3")
+        self.app.check_pages(now=self.app.pages["tab3"] + PAGE_TIMEOUT + 1)  # tab3 went silent
+        self.app.check_pages(now=self.app.last_close + CLOSE_GRACE + 1)
+        self.assertTrue(self.app.stop.is_set())
+
+    def test_stop_button(self):
+        stops = []
+        self.app.on_stop = lambda: stops.append(1)
+        conn = http.client.HTTPConnection("127.0.0.1", self.port, timeout=5)
+        conn.request("POST", "/api/stop", body="{}", headers={"Content-Type": "application/json",
+                                                               "Host": f"127.0.0.1:{self.port}"})
+        self.assertEqual(conn.getresponse().status, 200)
+        conn.close()
+        self.assertTrue(self.app.stop.is_set())
+
+    def test_session_ongoing(self):
+        from datetime import timedelta
+        from icy_rsg_tracker.stats import run_end
+        last = run_end(self.store.rows("speedrun")[-1])
+        gap = timedelta(minutes=self.cfg.session_gap_minutes)
+        self.assertTrue(self.app.session_ongoing("speedrun", now=last + gap - timedelta(minutes=1)))
+        self.assertFalse(self.app.session_ongoing("speedrun", now=last + gap + timedelta(minutes=1)))
 
     def test_bad_request(self):
         status, _, body = self.get("/api/summary?window=nope")
@@ -179,7 +228,7 @@ class ServerTest(AppTestBase):
     def test_static_files(self):
         status, ctype, body = self.get("/")
         self.assertEqual((status, ctype), (200, "text/html; charset=utf-8"))
-        self.assertIn(b"MCSR Tracker", body)
+        self.assertIn(b"Icy RSG Tracker", body)
         self.assertEqual(self.get("/app.js")[1], "text/javascript; charset=utf-8")
 
     def test_no_path_traversal(self):
@@ -195,7 +244,7 @@ class ServerTest(AppTestBase):
         second.server_close()
 
     def test_detects_running_instance(self):
-        from mcsr_tracker.app.server import running_instance
+        from icy_rsg_tracker.app.server import running_instance
         self.assertEqual(running_instance(self.port), f"http://127.0.0.1:{self.port}/")
         self.assertIsNone(running_instance(1))  # nothing there
 
@@ -210,9 +259,9 @@ if __name__ == "__main__":
 
 class PlayerTest(unittest.TestCase):
     def setUp(self):
-        from mcsr_tracker.app import player
+        from icy_rsg_tracker.app import player
         import re
-        from mcsr_tracker.config import Instance
+        from icy_rsg_tracker.config import Instance
         self.player = player
         self.tmp = tempfile.TemporaryDirectory()
         self.root = Path(self.tmp.name)
@@ -253,8 +302,8 @@ class TexturesTest(unittest.TestCase):
     def test_reads_from_jar_and_rejects_bad_names(self):
         import re
         import zipfile
-        from mcsr_tracker.app import textures
-        from mcsr_tracker.config import Instance
+        from icy_rsg_tracker.app import textures
+        from icy_rsg_tracker.config import Instance
         with tempfile.TemporaryDirectory() as tmp:
             launcher = Path(tmp) / "Prism"
             mc = launcher / "instances" / "speedrun" / "minecraft"

@@ -140,7 +140,7 @@ def _toml_num(value):
 
 def to_toml(cfg):
     lines = [
-        "# MCSR Tracker settings. Written by the app's Settings page; you can also edit it by hand.",
+        "# Icy RSG Tracker settings. Written by the app's Settings page; you can also edit it by hand.",
         "",
         f"speedrunigt_dir = {_toml_str(cfg.speedrunigt_dir)}",
         f"session_gap_minutes = {_toml_num(cfg.session_gap_minutes)}",

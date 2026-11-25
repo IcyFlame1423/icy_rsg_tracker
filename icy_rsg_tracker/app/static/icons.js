@@ -40,8 +40,84 @@ const BED = [
   { a: [0, 3, 16], b: [16, 9, 32], top: [6, 28, 16, 16], front: [22, 22, 16, 6], side: [22, 28, 6, 16], turned: true },
 ];
 
-/** What each icon is. top/side: block textures for the shape's faces; model: entity boxes
- *  on one texture. */
+// Entity models for advancement icons, like DRAGON_HEAD: [x, y, z, w, h, d, u, v].
+const CHEST = [
+  [1, -10, 1, 14, 10, 14, 0, 19],   // bottom
+  [1, -14, 1, 14, 5, 14, 0, 0],     // lid
+  [7, -11, 0, 2, 4, 1, 0, 0],       // latch
+];
+const SHIELD = [[-6, -11, -2, 12, 22, 1, 0, 0]];
+const SKULL = [[-4, -8, -4, 8, 8, 8, 0, 0]];
+const BANNER = [[-10, -40, -1, 20, 40, 1, 0, 0]];  // just the cloth
+// The dragon egg: stacked slabs, narrow at the top, drawn bottom to top.
+const EGG = [[3, 0, 3, 13, 1, 13], [2, 1, 2, 14, 3, 14], [1, 3, 1, 15, 8, 15], [2, 8, 2, 14, 11, 14],
+             [3, 11, 3, 13, 13, 13], [4, 13, 4, 12, 14, 12], [5, 14, 5, 11, 15, 11], [6, 15, 6, 10, 16, 10]]
+  .map(([x0, y0, z0, x1, y1, z1]) => [[x0, y0, z0], [x1, y1, z1]]);
+
+const item = (t) => ({ item: `item/${t}` });
+const cube = (t) => ({ shape: CUBE, top: `block/${t}`, side: `block/${t}` });
+const column = (top, side) => ({ shape: CUBE, top: `block/${top}`, side: `block/${side}` });
+// Each advancement's icon: the item or block shown on its tile in the game.
+const ADVANCEMENT_ICONS = {
+  "story/root": { shape: CUBE, top: "block/grass_block_top", topTint: "#91bd59", side: "block/grass_block_side" },
+  "story/mine_stone": item("wooden_pickaxe"), "story/upgrade_tools": item("stone_pickaxe"),
+  "story/smelt_iron": item("iron_ingot"), "story/obtain_armor": item("iron_chestplate"),
+  "story/lava_bucket": item("lava_bucket"), "story/iron_tools": item("iron_pickaxe"),
+  "story/deflect_arrow": { model: SHIELD, texture: "entity/shield_base_nopattern" },
+  "story/form_obsidian": cube("obsidian"), "story/mine_diamond": item("diamond"),
+  "story/enter_the_nether": item("flint_and_steel"), "story/shiny_gear": item("diamond_chestplate"),
+  "story/enchant_item": item("enchanted_book"), "story/cure_zombie_villager": item("golden_apple"),
+  "story/follow_ender_eye": item("ender_eye"), "story/enter_the_end": cube("end_stone"),
+  "nether/root": cube("red_nether_bricks"), "nether/return_to_sender": item("fire_charge"),
+  "nether/find_bastion": cube("polished_blackstone_bricks"),
+  "nether/obtain_ancient_debris": column("ancient_debris_top", "ancient_debris_side"),
+  "nether/fast_travel": item("map"), "nether/find_fortress": cube("nether_bricks"),
+  "nether/obtain_crying_obsidian": cube("crying_obsidian"), "nether/distract_piglin": item("gold_ingot"),
+  "nether/ride_strider": item("warped_fungus_on_a_stick"), "nether/uneasy_alliance": item("ghast_tear"),
+  "nether/loot_bastion": { model: CHEST, texture: "entity/chest/normal" },
+  "nether/use_lodestone": column("lodestone_top", "lodestone_side"),
+  "nether/netherite_armor": item("netherite_chestplate"),
+  "nether/get_wither_skull": { model: SKULL, texture: "entity/skeleton/wither_skeleton" },
+  "nether/obtain_blaze_rod": item("blaze_rod"),
+  "nether/charge_respawn_anchor": column("respawn_anchor_top_off", "respawn_anchor_side0"),
+  "nether/explore_nether": item("netherite_boots"), "nether/summon_wither": item("nether_star"),
+  "nether/brew_potion": { layers: [["item/potion_overlay", "#385dc6"], ["item/potion"]] },  // a water bottle
+  "nether/create_beacon": cube("beacon"), "nether/all_potions": item("milk_bucket"),
+  "nether/create_full_beacon": cube("beacon"), "nether/all_effects": item("bucket"),
+  "end/root": cube("end_stone"),
+  "end/kill_dragon": { model: DRAGON_HEAD, texture: "entity/enderdragon/dragon" },
+  "end/dragon_egg": { shape: EGG, top: "block/dragon_egg", side: "block/dragon_egg" },
+  "end/enter_end_gateway": item("ender_pearl"), "end/respawn_dragon": item("end_crystal"),
+  "end/dragon_breath": item("dragon_breath"), "end/find_end_city": cube("purpur_block"),
+  "end/elytra": item("elytra"), "end/levitate": item("shulker_shell"),
+  "adventure/root": item("map"),
+  "adventure/voluntary_exile": { model: BANNER, texture: "entity/banner_base" },
+  "adventure/kill_a_mob": item("iron_sword"), "adventure/trade": item("emerald"),
+  "adventure/honey_block_slide": column("honey_block_top", "honey_block_side"),
+  "adventure/ol_betsy": item("crossbow_standby"),
+  "adventure/sleep_in_bed": { parts: BED, texture: "entity/bed/red" },
+  "adventure/hero_of_the_village": { model: BANNER, texture: "entity/banner_base" },
+  "adventure/throw_trident": item("trident"), "adventure/shoot_arrow": item("bow"),
+  "adventure/kill_all_mobs": item("diamond_sword"), "adventure/totem_of_undying": item("totem_of_undying"),
+  "adventure/summon_iron_golem": { shape: CUBE, top: "block/pumpkin_top", side: "block/pumpkin_side",
+                                   front: "block/carved_pumpkin" },
+  "adventure/two_birds_one_arrow": item("crossbow_standby"),
+  "adventure/whos_the_pillager_now": item("crossbow_standby"), "adventure/arbalistic": item("crossbow_standby"),
+  "adventure/adventuring_time": item("diamond_boots"), "adventure/very_very_frightening": item("trident"),
+  "adventure/sniper_duel": item("arrow"), "adventure/bullseye": column("target_top", "target_side"),
+  "husbandry/root": column("hay_block_top", "hay_block_side"),
+  "husbandry/safely_harvest_honey": item("honey_bottle"), "husbandry/breed_an_animal": item("wheat"),
+  "husbandry/tame_an_animal": item("lead"), "husbandry/fishy_business": item("fishing_rod"),
+  "husbandry/silk_touch_nest": { shape: CUBE, top: "block/bee_nest_top", side: "block/bee_nest_side",
+                                 front: "block/bee_nest_front" },
+  "husbandry/plant_seed": item("wheat"), "husbandry/bred_all_animals": item("golden_carrot"),
+  "husbandry/complete_catalogue": item("cod"), "husbandry/tactical_fishing": item("pufferfish_bucket"),
+  "husbandry/balanced_diet": item("apple"), "husbandry/obtain_netherite_hoe": item("netherite_hoe"),
+};
+
+/** What each icon is. top/side (and front, if it differs): block textures for the shape's
+ *  faces, topTint a color the top is tinted (grass); model: entity boxes on one texture;
+ *  layers: item textures drawn over each other, each optionally tinted (potions). */
 const ICONS = {
   nether: { item: "item/flint_and_steel", title: "Flint and steel" },
   bastion: { shape: CUBE, top: "block/blackstone_top", side: "block/blackstone", title: "Blackstone" },
@@ -55,6 +131,8 @@ const ICONS = {
   finish: { model: DRAGON_HEAD, texture: "entity/enderdragon/dragon", title: "Dragon head" },
   // Not splits: "any split" in the Reached filter, and the dashboard's tiles.
   any: { item: "item/paper", title: "Paper" },
+  advancement: { item: "item/knowledge_book", title: "Knowledge book" },
+  logo: { shape: CUBE, top: "block/packed_ice", side: "block/packed_ice", title: "Packed ice" },
   runs: { item: "item/golden_boots", title: "Golden boots" },
   resets: { item: "item/barrier", title: "Barrier" },
   clock: { item: "item/clock_00", title: "Clock" },
@@ -67,6 +145,8 @@ const ICONS = {
                      title: "Respawn anchors" },
   fire_resistance: { item: "mob_effect/fire_resistance", title: "Fire resistance" },
   obsidian: { shape: CUBE, top: "block/obsidian", side: "block/obsidian", title: "Obsidian" },
+  // "adv:<id>": the Splits page's advancements.
+  ...Object.fromEntries(Object.entries(ADVANCEMENT_ICONS).map(([id, def]) => [`adv:${id}`, def])),
 };
 
 const textureUrl = (name) => `/api/texture?${new URLSearchParams({ name })}`;
@@ -85,6 +165,35 @@ function loadImage(name) {
   return images.get(name);
 }
 
+/** A copy of an image with its colors multiplied by a tint (as the game colors grass and potions). */
+function tinted(img, color) {
+  const canvas = document.createElement("canvas");
+  canvas.width = img.width;
+  canvas.height = img.height;
+  const ctx = canvas.getContext("2d");
+  ctx.drawImage(img, 0, 0);
+  ctx.globalCompositeOperation = "multiply";
+  ctx.fillStyle = color;
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+  ctx.globalCompositeOperation = "destination-in";  // keep the image's transparency
+  ctx.drawImage(img, 0, 0);
+  return canvas;
+}
+
+/** An item made of layers (e.g. a potion: the tinted liquid, then the bottle). */
+async function renderLayers(def, px = 4) {
+  const images = await Promise.all(def.layers.map(([name]) => loadImage(name)));
+  const canvas = document.createElement("canvas");
+  canvas.width = canvas.height = 16 * px;
+  const ctx = canvas.getContext("2d");
+  ctx.imageSmoothingEnabled = false;
+  images.forEach((img, i) => {
+    const tint = def.layers[i][1];
+    ctx.drawImage(tint ? tinted(img, tint) : img, 0, 0, 16 * px, 16 * px);
+  });
+  return canvas.toDataURL();
+}
+
 // Isometric axes on screen, per block pixel: x runs right-down, z left-down, y up.
 const C = Math.cos(Math.PI / 6);
 const AXIS = { x: [C, 0.5], y: [0, -1], z: [-C, 0.5] };
@@ -94,7 +203,7 @@ const clamp = (v) => Math.min(16, Math.max(0, v));
 /** The icon's picture: the item texture, or its 3D shape drawn onto a canvas. */
 async function baseImage(def) {
   if (def.item) return loadImage(def.item);
-  const url = await renderShape(def);
+  const url = await (def.layers ? renderLayers(def) : renderShape(def));
   return new Promise((resolve, reject) => {
     const img = new Image();
     img.onload = () => resolve(img);
@@ -163,11 +272,12 @@ async function boxes(def) {
       top: [tex, [u + d, v, w, d]], front: [tex, [u + d, v + d, w, h]], side: [tex, [u + d + w, v + d, d, h]],
     })).sort((p, q) => p.a[2] - q.a[2] || p.a[1] - q.a[1]);
   }
-  const [top, side] = await Promise.all([loadImage(def.top), loadImage(def.side)]);
+  let [top, side, front] = await Promise.all([loadImage(def.top), loadImage(def.side), loadImage(def.front ?? def.side)]);
+  if (def.topTint) top = tinted(top, def.topTint);
   return def.shape.map(([a, b]) => {
     // Texture areas follow the box's position in the block, as Minecraft maps them.
     const [x0, y0, z0] = a.map(clamp), [x1, y1, z1] = b.map(clamp);
-    return { a, b, top: [top, [x0, z0, x1 - x0, z1 - z0]], front: [side, [x0, 16 - y1, x1 - x0, y1 - y0]],
+    return { a, b, top: [top, [x0, z0, x1 - x0, z1 - z0]], front: [front, [x0, 16 - y1, x1 - x0, y1 - y0]],
              side: [side, [16 - z1, 16 - y1, z1 - z0, y1 - y0]] };
   });
 }
@@ -222,11 +332,21 @@ export function icon(key, { className = "" } = {}) {
   if (def.item && !def.count) {
     img.src = textureUrl(def.item);
   } else {
-    if (!rendered.has(key)) rendered.set(key, def.count ? renderCounted(def, def.count) : renderShape(def));
+    if (!rendered.has(key)) {
+      rendered.set(key, def.count ? renderCounted(def, def.count) : def.layers ? renderLayers(def) : renderShape(def));
+    }
     rendered.get(key).then((url) => { img.src = url; }, () => slot.remove());
   }
   img.addEventListener("error", () => slot.remove());
   return slot;
+}
+
+/** A block icon drawn as an image (a data URL promise), or null without the game's textures. */
+export function blockImage(key) {
+  const def = ICONS[key];
+  if (!def?.shape || !state.textures) return null;
+  if (!rendered.has(key)) rendered.set(key, renderShape(def));
+  return rendered.get(key);
 }
 
 /** A label with its split's icon in front: [icon, text] (just the text if no icon). */

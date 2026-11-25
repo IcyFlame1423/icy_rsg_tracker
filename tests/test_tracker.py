@@ -8,13 +8,13 @@ import time
 import unittest
 from pathlib import Path
 
-from mcsr_tracker import deaths, runs_csv
-from mcsr_tracker.config import Config, Instance
-from mcsr_tracker.importer import (CHEATS_AT_START, OTHER_INSTANCE, SET_SEED,
+from icy_rsg_tracker import deaths, runs_csv
+from icy_rsg_tracker.config import Config, Instance
+from icy_rsg_tracker.importer import (CHEATS_AT_START, OTHER_INSTANCE, SET_SEED,
                                    import_records)
-from mcsr_tracker.records import parse_record, parse_world_number
-from mcsr_tracker.timefmt import format_ms, parse_time
-from mcsr_tracker import watch as watch_mod
+from icy_rsg_tracker.records import parse_record, parse_world_number
+from icy_rsg_tracker.timefmt import format_ms, parse_time
+from icy_rsg_tracker import watch as watch_mod
 from unittest import mock
 
 # date = ms timestamp when the run ended
@@ -199,7 +199,7 @@ class ImportTest(unittest.TestCase):
         ignored = {}
         import_records(self.cfg, ignored=ignored)
         self.assertIn("x", ignored)
-        with mock.patch("mcsr_tracker.importer.load_record") as load:
+        with mock.patch("icy_rsg_tracker.importer.load_record") as load:
             result = import_records(self.cfg, ignored=ignored)
             load.assert_not_called()
         self.assertEqual(result.ignored, {OTHER_INSTANCE: 1})
@@ -278,7 +278,7 @@ class StatsTest(unittest.TestCase):
         self.assertEqual((sessions[1]["runs_played"], sessions[1]["playtime"]), ("1", "0:00:40"))
 
     def test_structures_in_order_entered(self):
-        from mcsr_tracker.stats import compute_raw
+        from icy_rsg_tracker.stats import compute_raw
         rows = runs_csv.load_rows(self.cfg.runs_csv(self.cfg.instances[0]))
         row = dict(rows[0], bastion="", fortress="")
         both_fort_first = dict(row, nether="1:00.000", fortress="2:00.000", bastion="5:00.000")
@@ -511,7 +511,7 @@ class ResourcesTest(unittest.TestCase):
         return {"is_completed": completed, "date": T0, "stats": {"uuid": {"stats": stats}}}
 
     def counts(self, rec):
-        from mcsr_tracker.resources import resources
+        from icy_rsg_tracker.resources import resources
         return {k: v["count"] for k, v in resources(rec).items() if isinstance(v, dict)}
 
     def test_counts(self):
@@ -528,7 +528,7 @@ class ResourcesTest(unittest.TestCase):
         self.assertEqual(self.counts(rec)["beds"], 3)
 
     def test_death_divisor(self):
-        from mcsr_tracker.resources import pickup_divisor
+        from icy_rsg_tracker.resources import pickup_divisor
         self.assertEqual(pickup_divisor(0, True), 1)
         self.assertEqual(pickup_divisor(1, False), 1)  # one death, reset: items left behind
         self.assertEqual(pickup_divisor(2, False), 2)  # picked up again once, left at the last
@@ -537,7 +537,7 @@ class ResourcesTest(unittest.TestCase):
         self.assertEqual(self.counts(rec)["ender_pearls"], 10)
 
     def test_estimate_allows_for_items_used_before_deaths(self):
-        from mcsr_tracker.resources import estimate
+        from icy_rsg_tracker.resources import estimate
         # 10 pearls, 2 used before one death, picked back up: 10 + 8 = 18 picked up.
         self.assertEqual(estimate(18, [2]), 10)
         self.assertEqual(estimate(18, [0]), 9)       # without usage: plain halving
@@ -545,7 +545,7 @@ class ResourcesTest(unittest.TestCase):
         self.assertEqual(estimate(4, [5]), 4)
 
     def test_usage_rules(self):
-        from mcsr_tracker.resources import _usage
+        from icy_rsg_tracker.resources import _usage
         m = 60_000
         use = _usage({"bastion": 4 * m, "fortress": 8 * m, "blind": 11 * m, "stronghold": 14 * m})
         self.assertEqual([use["obsidian"](t * m) for t in (5, 12, 15)], [0, 10, 20])
@@ -558,20 +558,20 @@ class ResourcesTest(unittest.TestCase):
         rec = self.record({"obsidian": 30}, deaths=1, completed=True)
         rec["timelines"] = [{"name": "nether_travel_blind", "igt": 600_000, "rta": 600_000},
                             {"name": "enter_stronghold", "igt": 800_000, "rta": 800_000}]
-        from mcsr_tracker.resources import resources
+        from icy_rsg_tracker.resources import resources
         # Died in the stronghold: 20 obsidian placed, so 30 = total + (total - 20) -> 25.
         self.assertEqual(resources(rec, [900_000])["obsidian"]["count"], 25)
         self.assertEqual(resources(rec)["obsidian"]["count"], 15)  # time unknown: halved
 
     def test_end_needs_six_blaze_rods(self):
-        from mcsr_tracker.resources import resources
+        from icy_rsg_tracker.resources import resources
         rec = self.record({"blaze_rod": 12}, deaths=2, completed=True)  # 12 / 3 = 4
         self.assertEqual(resources(rec)["blaze_rods"]["count"], 4)
         rec["timelines"] = [{"name": "enter_end", "igt": 900_000, "rta": 900_000}]
         self.assertEqual(resources(rec)["blaze_rods"]["count"], 6)
 
     def test_nether_death_reset_uses_an_anchor(self):
-        from mcsr_tracker.resources import resources
+        from icy_rsg_tracker.resources import resources
         rec = self.record({"crying_obsidian": 18, "glowstone_dust": 36}, deaths=1, completed=True)
         rec["timelines"] = [{"name": "enter_nether", "igt": 200_000, "rta": 200_000}]
         # A death reset in the nether: 6 crying obsidian and 12 dust used, then picked back up:

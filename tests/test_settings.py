@@ -6,10 +6,10 @@ import threading
 import unittest
 from pathlib import Path
 
-from mcsr_tracker import settings
-from mcsr_tracker.app.server import App, serve
-from mcsr_tracker.config import Config, Instance, load_config
-from mcsr_tracker.watch import Tracker
+from icy_rsg_tracker import settings
+from icy_rsg_tracker.app.server import App, serve
+from icy_rsg_tracker.config import Config, Instance, load_config
+from icy_rsg_tracker.watch import Tracker
 
 from .test_tracker import T0, make_record
 

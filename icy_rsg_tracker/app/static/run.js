@@ -1,4 +1,4 @@
-// One run (#run/<run_id>): its splits against your averages, its achievements, and where
+// One run (#run/<run_id>): its splits against your averages, its advancements, and where
 // it sits in its session.
 import * as fmt from "./fmt.js";
 import { countedIcon, iconSlot, withIcon } from "./icons.js";
@@ -89,7 +89,7 @@ function draw() {
   const cheats = $("run-cheats");
   cheats.hidden = run.cheats_from_rta == null;
   cheats.textContent = run.cheats_from_rta == null ? "" :
-    `Opened to LAN with cheats at ${fmt.time(run.cheats_from_rta)} real time. Splits and achievements after that aren't counted.`;
+    `Opened to LAN with cheats at ${fmt.time(run.cheats_from_rta)} real time. Splits and advancements after that aren't counted.`;
 
   const furthest = [...PROGRESSION].reverse().find(([k]) => times[k] != null);
   const reached = PROGRESSION.filter(([k]) => times[k] != null).length;
@@ -293,17 +293,17 @@ function drawAdvancements(base) {
   const earned = Object.entries(run.advancements).sort((a, b) => a[1] - b[1]);
   $("run-adv-note").textContent = earned.length
     ? `${earned.length} earned this run, in the order you got them.`
-    : "No achievements this run.";
+    : "No advancements this run.";
   $("run-advancements").hidden = !earned.length;
   if (!earned.length) return;
   const runsWord = compare === "all" ? "Runs with it" : "Runs with it (session)";
   $("run-advancements").replaceChildren(
-    h("thead", {}, h("tr", {}, ["Achievement", "Time", "Average", "vs average", "Best", runsWord]
+    h("thead", {}, h("tr", {}, ["Advancement", "Time", "Average", "vs average", "Best", runsWord]
       .map((text, i) => h("th", { scope: "col", class: i ? "num" : "" }, text)))),
     h("tbody", {}, earned.map(([id, ms]) => {
       const a = base.advancements[id];
       return h("tr", {},
-        h("td", { title: id }, names[id] ?? id),
+        h("td", { title: id }, iconSlot(`adv:${id}`), names[id] ?? id),
         h("td", { class: "num strong" }, fmt.time(ms)),
         h("td", { class: "num" }, fmt.timeTenths(a?.avg_ms)),
         h("td", { class: "num" }, vsCell(ms, a?.avg_ms)),

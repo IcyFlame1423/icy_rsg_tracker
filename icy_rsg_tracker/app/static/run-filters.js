@@ -1,4 +1,4 @@
-// The run filters (Reached / Result / Deaths), shared by the Runs page and the Dashboard's
+// The run filters (Reached), shared by the Runs page and the Dashboard's
 // recent runs: changing them in one place changes them in the other.
 import { h, SPLITS } from "./common.js";
 import { iconSelect } from "./select.js";
@@ -14,21 +14,9 @@ export const FILTERS = {
     default: "nether",
     test: (v, r) => v === "any" || (v === "finish" ? r.result === "finished" : r.splits[v] != null),
   },
-  result: {
-    label: "Result",
-    options: [["any", "Any result"], ["finished", "Finished"], ["reset", "Reset"]],
-    default: "any",
-    test: (v, r) => v === "any" || r.result === v,
-  },
-  deaths: {
-    label: "Deaths",
-    options: [["any", "Any"], ["none", "No deaths"], ["died", "Died"],
-              ["with", "Death with spawn point"], ["without", "Accidental death"]],
-    default: "any",
-    test: (v, r) => v === "any" || (v === "none" ? r.deaths === 0 : v === "died" ? r.deaths > 0
-      : v === "with" ? r.deaths_with_respawn > 0 : r.deaths_without_respawn > 0),
-  },
 };
+
+for (const old of ["deaths", "result"]) localStorage.removeItem(`runsFilter.${old}`);  // filters that were removed
 
 export const filters = Object.fromEntries(Object.entries(FILTERS).map(([k, f]) =>
   [k, localStorage.getItem(`runsFilter.${k}`) ?? f.default]));
@@ -40,7 +28,7 @@ export function setFilter(key, value) {
 
 export const matches = (run) => Object.entries(FILTERS).every(([k, f]) => f.test(filters[k], run));
 
-/** "Reached: Nether, Deaths: Died" for the filters that aren't "any". */
+/** "Reached: Nether" for the filters that aren't "any". */
 export function describeFilters() {
   return Object.entries(FILTERS).filter(([k]) => filters[k] !== "any")
     .map(([k, f]) => `${f.label}: ${f.options.find(([v]) => v === filters[k])[1]}`).join(", ");

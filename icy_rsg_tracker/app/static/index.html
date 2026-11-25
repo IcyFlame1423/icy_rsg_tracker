@@ -3,14 +3,14 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>MCSR Tracker</title>
+  <title>Icy RSG Tracker</title>
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><rect x='2' y='2' width='12' height='12' rx='2' fill='%233987e5'/></svg>">
   <link rel="stylesheet" href="/app.css">
   <script type="module" src="/app.js"></script>
 </head>
 <body>
   <header class="topbar">
-    <div class="brand">MCSR Tracker</div>
+    <div class="brand"><span class="app-logo" id="app-logo"></span>Icy RSG Tracker <span class="app-version" id="app-version"></span></div>
     <nav class="tabs" aria-label="Pages">
       <a href="#dashboard" class="tab">Dashboard</a>
       <a href="#runs" class="tab">Runs</a>
@@ -25,6 +25,7 @@
     <div class="status" id="status" role="status" aria-live="polite">
       <span class="status-dot" aria-hidden="true"></span><span class="status-text">Connecting…</span>
     </div>
+    <button type="button" class="button small stop-button" id="stop-tracking" hidden>Stop tracking</button>
     <div class="player" id="player" hidden>
       <span class="player-head" id="player-head" aria-hidden="true"><span class="face"></span><span class="hat"></span></span>
       <span class="player-name" id="player-name"></span>
@@ -80,7 +81,7 @@
     <div class="filters">
       <div class="window-filters" id="window-filters" role="group" aria-label="Time window">
         <div class="segmented" id="window">
-          <button type="button" data-window="last_session" aria-pressed="true">Last session</button>
+          <button type="button" data-window="last_session" aria-pressed="true"><span class="live-dot" aria-hidden="true"></span><span class="session-label">Last session</span></button>
           <button type="button" data-window="today">Today</button>
           <button type="button" data-window="7d">7 days</button>
           <button type="button" data-window="30d">30 days</button>
@@ -210,7 +211,7 @@
           <div class="tiles" id="run-deaths"></div>
         </section>
         <section class="card spaced">
-          <h2>Achievements</h2>
+          <h2>Advancements</h2>
           <p class="sub" id="run-adv-note"></p>
           <div class="table-scroll"><table class="data-table" id="run-advancements"></table></div>
         </section>

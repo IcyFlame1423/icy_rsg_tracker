@@ -1,4 +1,4 @@
-# MCSR RSG Tracker
+# Icy RSG Tracker
 
 A run tracker and stats dashboard for Minecraft 1.16.1 random seed speedruns (RSG).
 
@@ -11,11 +11,11 @@ can't affect your runs or make them unverifiable.
 
 - **Dashboard:** nethers per hour, runs played, total resets (including wall resets), average nether,
   completions, split progression, split times, and your latest runs.
-- **Runs:** every run with its splits, filterable (reached split, result, deaths), with any of the
+- **Runs:** every run with its splits, filterable by the split they reached, with any of the
   80 advancements as extra columns. **View** opens a run's own page.
 - **Run page:** each split against your average (all time or that session), segment times, an estimate
   of key resources (blaze rods, pearls, beds, respawn anchors, fire resistance, obsidian),
-  deaths, and achievements in the order you got them.
+  deaths, and advancements in the order you got them.
 - **Sessions:** trends across sessions (nethers per hour, runs, resets per nether, average split
   times), and each session's timeline.
 - **Splits:** one split in depth: distribution, over time, top 10, from the start of the run or from
@@ -37,12 +37,14 @@ Split icons are drawn from your own copy of Minecraft (nothing of Mojang's is in
 
 ## Install
 
-1. Download `MCSR-Tracker.exe` from the [Releases](../../releases) page.
+1. Download `icy_rsg_tracker.exe` from the [Releases](../../releases) page.
 2. Put it in a folder of its own (it keeps its settings and data next to itself).
 3. Double-click it. It opens the dashboard in your browser at http://127.0.0.1:8765/.
    Windows may warn that the app is unrecognized, because it isn't signed. Click **More info**, then
    **Run anyway**.
-4. Keep the window open while you play; close it to stop tracking.
+4. It runs in the background, without a window of its own. Keep the dashboard tab open while you
+   play. To stop tracking, press **Stop tracking** at the top of the dashboard, or close the tab.
+   Opening the exe again while it's running just opens the dashboard.
 
 On the first start it finds your RSG instance (one with Atum installed) and imports every run
 SpeedRunIGT has recorded. If it can't find the instance, the status bar says so: open **Settings**,
@@ -51,7 +53,7 @@ click **Detect instances** or enter the instance's `.minecraft` folder.
 ### From source
 
 Needs Python 3.11 or newer, with no other packages. Download the repository and double-click
-`track.bat`, or run `python -m mcsr_tracker`.
+`track.bat`, or run `python -m icy_rsg_tracker`.
 
 ## What it reads, and what it doesn't do
 
@@ -102,20 +104,21 @@ Use the app's **Settings** page, which writes `config.toml` next to the app. You
 ## Command line
 
 ```
-python -m mcsr_tracker                   # dashboard + tracking (same as `app`)
-python -m mcsr_tracker app --no-browser  # options: --port N, --no-tracker (view only)
-python -m mcsr_tracker watch             # tracking only, console output
-python -m mcsr_tracker import            # one-off update
-python -m mcsr_tracker import --rebuild  # rebuild from the records folder (old file kept as runs.csv.bak)
+python -m icy_rsg_tracker                   # dashboard + tracking (same as `app`)
+python -m icy_rsg_tracker app --no-browser  # options: --port N, --no-tracker (view only)
+python -m icy_rsg_tracker watch             # tracking only, console output
+python -m icy_rsg_tracker import            # one-off update
+python -m icy_rsg_tracker import --rebuild  # rebuild from the records folder (old file kept as runs.csv.bak)
 python -m unittest discover -s tests -t .
 ```
 
-The .exe takes the same commands, e.g. `"MCSR-Tracker.exe" import --rebuild`.
+The .exe takes the same commands, e.g. `"icy_rsg_tracker.exe" import --rebuild`. It has no console, so
+what it prints goes to `tracker.log` next to it (the same happens with `track.bat`).
 
 ## Building the .exe
 
 Run `build.bat` (needs Python 3.11+). It installs PyInstaller into its own `.build-venv` folder and
-writes `dist\MCSR-Tracker.exe`.
+writes `dist\icy_rsg_tracker.exe`.
 
 ## License
 
