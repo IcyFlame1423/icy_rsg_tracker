@@ -37,7 +37,7 @@ Split icons are drawn from your own copy of Minecraft (nothing of Mojang's is in
 
 ## Install
 
-1. Download `MCSR Tracker.exe` from the [Releases](../../releases) page.
+1. Download `MCSR-Tracker.exe` from the [Releases](../../releases) page.
 2. Put it in a folder of its own (it keeps its settings and data next to itself).
 3. Double-click it. It opens the dashboard in your browser at http://127.0.0.1:8765/.
    Windows may warn that the app is unrecognized, because it isn't signed. Click **More info**, then
@@ -110,12 +110,12 @@ python -m mcsr_tracker import --rebuild  # rebuild from the records folder (old 
 python -m unittest discover -s tests -t .
 ```
 
-The .exe takes the same commands, e.g. `"MCSR Tracker.exe" import --rebuild`.
+The .exe takes the same commands, e.g. `"MCSR-Tracker.exe" import --rebuild`.
 
 ## Building the .exe
 
 Run `build.bat` (needs Python 3.11+). It installs PyInstaller into its own `.build-venv` folder and
-writes `dist\MCSR Tracker.exe`.
+writes `dist\MCSR-Tracker.exe`.
 
 ## License
 
