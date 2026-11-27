@@ -34,7 +34,7 @@ Split icons are drawn from your own copy of Minecraft (nothing of Mojang's is in
 ## Requirements
 
 - Windows.
-- Minecraft 1.16.1 with **SpeedRunIGT** and **Atum** (RSG worlds named `Random Speedrun #N`).
+- Minecraft 1.16.1 with **SpeedRunIGT**, **Atum**, and **Hermes** (RSG worlds named `Random Speedrun #N`).
   **SeedQueue** works and is what wall resets are counted from; without it, you just get no wall
   resets.
 - One instance at a time. Multi-instance walls (several instances playing at once) aren't supported yet:
