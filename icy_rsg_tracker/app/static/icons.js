@@ -223,7 +223,7 @@ async function renderCounted(def, count, px = 4) {
   ctx.imageSmoothingEnabled = false;
   ctx.drawImage(item, 0, 0, 16 * px, 16 * px);
 
-  const text = String(count);
+  const text = String(count);  // "" for none
   const glyphs = [...text].map((ch) => {
     const code = ch.charCodeAt(0), gx = (code % 16) * cell, gy = Math.floor(code / 16) * cell;
     // A glyph's width: up to its rightmost non-blank column.
@@ -274,6 +274,7 @@ async function boxes(def) {
   }
   let [top, side, front] = await Promise.all([loadImage(def.top), loadImage(def.side), loadImage(def.front ?? def.side)]);
   if (def.topTint) top = tinted(top, def.topTint);
+  if (def.tint) [top, side, front] = [top, side, front].map((img) => tinted(img, def.tint));  // leaves
   return def.shape.map(([a, b]) => {
     // Texture areas follow the box's position in the block, as Minecraft maps them.
     const [x0, y0, z0] = a.map(clamp), [x1, y1, z1] = b.map(clamp);
@@ -347,6 +348,58 @@ export function blockImage(key) {
   if (!def?.shape || !state.textures) return null;
   if (!rendered.has(key)) rendered.set(key, renderShape(def));
   return rendered.get(key);
+}
+
+// Potion colors (as the game draws the liquid), by effect.
+const POTION_COLORS = {
+  fire_resistance: "#e49a3a", swiftness: "#7cafc6", strength: "#932423", healing: "#f82423",
+  regeneration: "#cd5cab", night_vision: "#1f1fa1", invisibility: "#7f8392", leaping: "#22ff4c",
+  water_breathing: "#2e5299", slow_falling: "#ffefd1", poison: "#4e9331", weakness: "#484d48",
+  slowness: "#5a6c81", harming: "#430a09", turtle_master: "#755e48",
+};
+const WATER = "#385dc6";
+const LEATHER = "#a06540";
+const itemDefs = new Map();  // item id -> Promise<icon definition or null>
+
+/** How to draw any item ("soul_sand", "splash_potion[fire_resistance]"), from its model. */
+function itemDef(id) {
+  if (!itemDefs.has(id)) {
+    const [, base, potion] = id.match(/^([a-z0-9_]+)(?:\[([a-z0-9_]+)\])?$/) ?? [];
+    itemDefs.set(id, !base ? Promise.resolve(null) : fetch(`/api/item?${new URLSearchParams({ id: base })}`)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((m) => {
+        if (!m) return null;
+        if (m.entity?.endsWith("_bed")) return { parts: BED, texture: `entity/bed/${m.entity.replace(/_bed$/, "")}` };
+        if (m.entity === "chest") return { model: CHEST, texture: "entity/chest/normal" };
+        if (m.entity) return null;
+        if (m.layers) {
+          const color = base.endsWith("potion") ? POTION_COLORS[(potion ?? "").replace(/^(long|strong)_/, "")] ?? WATER : null;
+          if (m.layers.length === 1) return { item: m.layers[0] };
+          if (base.startsWith("leather_")) return { layers: m.layers.map((t, i) => [t, i === 0 ? LEATHER : null]) };
+          return { layers: m.layers.map((t) => [t, color && t.endsWith("_overlay") ? color : null]) };
+        }
+        return { shape: m.boxes, top: m.top, side: m.side, front: m.front, tint: m.tint };
+      })
+      .catch(() => null));
+  }
+  return itemDefs.get(id);
+}
+
+/** Any item's icon with its stack count drawn in the corner (none for 1), or null without
+ *  the game's textures. Removed if the item can't be drawn. */
+export function itemIcon(id, count = 1, { className = "" } = {}) {
+  if (!state.textures) return null;
+  const img = h("img", { class: "icon-item", alt: "" });
+  const slot = h("span", { class: `icon ${className}`.trim(), "aria-hidden": "true" }, img);
+  const key = `item:${id}:${count}`;
+  if (!rendered.has(key)) {
+    rendered.set(key, itemDef(id).then((def) => {
+      if (!def) throw new Error(`no icon for ${id}`);
+      return renderCounted(def, count > 1 ? count : "");  // like the game: no number for one
+    }));
+  }
+  rendered.get(key).then((url) => { img.src = url; }, () => slot.remove());
+  return slot;
 }
 
 /** A label with its split's icon in front: [icon, text] (just the text if no icon). */

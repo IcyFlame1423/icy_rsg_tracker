@@ -20,11 +20,12 @@ async function postJSON(url, body) {
   return data;
 }
 
-function field(label, input, help, errorKey) {
+function field(label, input, help, errorKey, example) {
   return h("label", { class: "field" },
     h("span", { class: "field-label" }, label),
     input,
     help ? h("span", { class: "field-help" }, help) : null,
+    example ? h("span", { class: "field-help" }, "Example: ", h("code", {}, example)) : null,
     h("span", { class: "field-error", "data-error": errorKey }));
 }
 
@@ -45,11 +46,11 @@ function setMessage(text, kind = "") {
 function renderGeneral() {
   const s = current;
   const records = s.records_found == null
-    ? "Folder not found. SpeedRunIGT keeps it in your user folder (e.g. C:\\Users\\you\\speedrunigt)."
+    ? "Folder not found. SpeedRunIGT keeps it in your user folder."
     : `${fmt.int(s.records_found)} run records found in its records folder.`;
   $("settings-general").replaceChildren(
     field("SpeedRunIGT folder", h("input", { type: "text", id: "set-folder", value: s.speedrunigt_dir, spellcheck: "false" }),
-      records, "speedrunigt_dir"),
+      records, "speedrunigt_dir", "C:\\Users\\you\\speedrunigt"),
     h("div", { class: "field-row" },
       field("Session gap (minutes)", h("input", { type: "number", id: "set-gap", min: "1", max: "1440", step: "1",
                                                   value: String(s.session_gap_minutes) }),
@@ -102,7 +103,7 @@ function renderInstances() {
       inst.minecraft_dir
         ? (inst.logs_found === false ? "No logs folder here, so deaths can't be split by spawn point." : "Its logs are used to tell death resets from accidental deaths.")
         : "Optional. Used to tell death resets from accidental deaths.",
-      `instances.${i}.minecraft_dir`),
+      `instances.${i}.minecraft_dir`, "C:\\Users\\you\\AppData\\Roaming\\PrismLauncher\\instances\\speedrun\\minecraft"),
     h("button", { type: "button", class: "button danger", title: "Remove this instance",
                   disabled: instances.length === 1,
                   onclick: () => { instances.splice(i, 1); renderInstances(); } }, "Remove"),

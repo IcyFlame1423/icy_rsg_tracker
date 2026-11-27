@@ -7,10 +7,14 @@ recalculated across the whole file.
 """
 
 import csv
+import json
 import os
 from datetime import datetime, timedelta
 
 from .advancements import ADVANCEMENTS
+from .hermes import DETAILS, ITEMS
+from . import model
+from .phases import COLUMNS as PHASE_COLUMNS, TIME_COLUMNS
 from .records import SPLITS
 from .timefmt import format_ms, parse_time
 
@@ -24,6 +28,7 @@ BASE_COLUMNS = [
     "world_number",
     "worlds_generated",   # how far this run pushed the highest world number (see compute_derived)
     "run_type",
+    "seed",               # only if /seed was typed in the world (from the Hermes mod's play log)
     *SPLITS.keys(),       # nether, bastion, fortress, blind, stronghold, end
     "result",             # "finished" (beat the game) or "reset"
     "final_igt",
@@ -34,6 +39,14 @@ BASE_COLUMNS = [
     "death_times",        # in-game time of each death, ";"-separated, "+" after a death reset
                           # (respawned at a bed/anchor); from the game log
     "cheats_from_rta",    # real time LAN was opened with cheats; later splits are left out
+    # How many the run obtained (see hermes.ItemCounter); blank without a Hermes play log.
+    *ITEMS,               # ender_pearls, blaze_rods, beds, respawn_anchors, fire_resistance, obsidian
+    *DETAILS,             # where they went: blazes_killed, pearls_used, beds_lost, ... (see hermes.DETAILS)
+    # From the play log and ghost (see phases.COLUMNS): distances in blocks (straight lines,
+    # ignoring height), times as m:ss.mmm.
+    *PHASE_COLUMNS,       # spawn_to_structures, ..., and the performance model's inputs (bucket_1-9, ...)
+    "phases",             # JSON: the overworld, nether and stronghold sections (see phases.py)
+    "score",              # seconds lost against a top player on the same seed (model.py); finished runs only
 ]
 COLUMNS = BASE_COLUMNS + ADVANCEMENTS
 
@@ -46,11 +59,12 @@ def parse_date(text):
     return datetime.fromisoformat(text)  # much faster than strptime, same format
 
 
-def run_to_row(run, death_counts=None, death_times=None, death_resets=None):
+def run_to_row(run, death_counts=None, death_times=None, death_resets=None, play_log=None):
     """death_counts: (deaths, with_respawn, without_respawn) from deaths.death_columns;
     None values are left blank. Without it, only the record's death total is filled in.
     death_times: in-game ms of each death (deaths.death_times), or None if unknown.
-    death_resets: for each death, whether it respawned at a bed/anchor (or None)."""
+    death_resets: for each death, whether it respawned at a bed/anchor (or None).
+    play_log: what hermes.read_play_log found, or None without one."""
     row = dict.fromkeys(COLUMNS, "")
     resets = death_resets or [False] * len(death_times or [])
     row["death_times"] = ";".join(format_ms(t) + ("+" if r else "") for t, r in zip(death_times or [], resets))
@@ -71,11 +85,26 @@ def run_to_row(run, death_counts=None, death_times=None, death_resets=None):
         final_rta=format_ms(run.final_rta),
         cheats_from_rta=format_ms(run.cheats_from_rta),
     )
+    if play_log:
+        row.update(play_log_columns(play_log))
     for column, igt in run.splits.items():
         row[column] = format_ms(igt)
     for adv, igt in run.advancements.items():
         row[adv] = format_ms(igt)
     return row
+
+
+def play_log_columns(play_log):
+    """The runs.csv columns that come from a play log (hermes.read_play_log)."""
+    phases = dict(play_log["phases"])
+    numbers = phases.pop("columns", None) or {}
+    columns = {"seed": play_log["seed"] or "", "phases": json.dumps(phases, separators=(",", ":"))}
+    for item, count in {**play_log["items"], **play_log["details"]}.items():
+        columns[item] = str(count)
+    for name in PHASE_COLUMNS:
+        value = numbers.get(name)
+        columns[name] = format_ms(value) if name in TIME_COLUMNS else ("" if value is None else str(value))
+    return columns
 
 
 def load_rows(path):
@@ -127,6 +156,8 @@ def compute_derived(rows, session_gap_minutes):
             session += 1
         row["session_id"] = str(session)
         prev_end = end
+        scored = model.score(row)
+        row["score"] = "" if scored is None else f"{scored['score']:.1f}"
 
         row["worlds_generated"] = ""
         if row["world_number"]:

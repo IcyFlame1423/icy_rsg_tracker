@@ -250,6 +250,11 @@ def make_handler(app):
                     if png is None:
                         return self._send(404, b"No such texture", "text/plain")
                     return self._send(200, png, "image/png", cache="max-age=86400")
+                if url.path == "/api/item":
+                    model = app.textures.item(q.get("id", ""))
+                    if model is None:
+                        return self._send(404, b"No such item", "text/plain")
+                    return self._json(model)
                 if url.path in ("/api/player", "/api/skin"):
                     inst = app.store.instance(q.get("instance", app.cfg.instances[0].name))
                     if url.path == "/api/player":

@@ -360,16 +360,60 @@ a.button:hover { text-decoration: none; }
 .resource-text { font-size: 24px; font-weight: 600; }
 .resource-name { color: var(--text-muted); font-size: 12px; }
 .resources-card .footnote:empty { display: none; }
+.resources:empty { display: none; }
+/* Run page: the overworld, nether, stronghold and End cards. */
+/* Two to a row (overworld and nether, stronghold and End), one above each other when narrow. */
+.phase-row { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; margin-top: 16px; }
+.phase-row > .card.spaced { margin-top: 0; }
+.phase-row { align-items: start; }  /* an open card doesn't stretch the closed one beside it */
+/* Each card starts closed: its heading is a button that opens it. */
+.phase-card h2 { margin: 0; }
+.phase-toggle { all: unset; box-sizing: border-box; display: flex; align-items: center; justify-content: space-between;
+  width: 100%; cursor: pointer; font: inherit; color: inherit; }
+.phase-toggle:focus-visible { outline: 2px solid var(--series-1); outline-offset: 4px; border-radius: 4px; }
+.phase-chevron { width: 16px; height: 16px; flex: none; color: var(--text-muted); transition: transform 0.15s; }
+.phase-toggle[aria-expanded="true"] .phase-chevron { transform: rotate(90deg); }
+.phase-toggle:hover .phase-chevron { color: var(--text-primary); }
+.phase-body { margin-top: 12px; }
+@media (max-width: 1100px) { .phase-row { grid-template-columns: minmax(0, 1fr); } }
+.phase-card h3 { font-size: 13px; font-weight: 600; color: var(--text-muted); margin: 18px 0 8px; }
+.phase-card h3:first-child { margin-top: 4px; }
+.phase-card .tiles { grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); }
+.phase-card .tile { background: var(--surface-2); }
+.phase-card .tile.has-art { padding-right: 68px; }
+.phase-card .tile-art { right: 14px; }
+.phase-card .tile-art .icon { width: 44px; height: 44px; }
+.phase-card .tile-art .icon img { width: 100%; height: 100%; image-rendering: pixelated; }
+/* Two columns: a table or the inventory, with tiles filling the space to its right. */
+.phase-split { display: flex; flex-wrap: wrap; gap: 24px; align-items: flex-start; }
+.phase-main { flex: 0 0 auto; max-width: 100%; }
+.phase-side { flex: 1 1 340px; min-width: 0; }
+.phase-side .tiles { grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); }
+.phase-card .sub:empty { display: none; }
+.phase-card > .sub { margin-bottom: 12px; }
+.materials { width: auto; min-width: 320px; }
+.materials td { vertical-align: middle; }
+.materials .icon { width: 24px; height: 24px; margin-right: 10px; vertical-align: middle; }
+.materials tr[tabindex] { cursor: default; }
+/* The inventory as the game shows it: light gray panel, sunken dark gray slots. */
+.inventory { display: inline-flex; gap: 10px; padding: 10px; background: #c6c6c6;
+  border: 3px solid; border-color: #fff #555 #555 #fff; border-radius: 4px; }
+.inventory-row { display: flex; }
+.inventory-row.hotbar { margin-top: 8px; }
+.inventory-main { display: flex; flex-direction: column; }
+.inventory-side { display: flex; align-items: flex-start; gap: 8px; }
+.inventory-armor { display: flex; flex-direction: column; }
+.inventory-slot { position: relative; width: 36px; height: 36px; box-sizing: content-box; background: #8b8b8b;
+  border: 2px solid; border-color: #373737 #fff #fff #373737; }
+.inventory-slot .icon { position: absolute; left: 2px; top: 2px; width: 36px; height: 36px; }
+.inventory-slot .icon img { width: 36px; height: 36px; image-rendering: pixelated; }
+.inventory-slot .inventory-empty { position: absolute; left: 2px; top: 2px; width: 32px; height: 32px; image-rendering: pixelated; }
+.inventory-slot[tabindex]:hover, .inventory-slot[tabindex]:focus-visible { background: #a8a8a8; outline: none; }
+.chips { display: flex; flex-wrap: wrap; gap: 6px; margin: 0; padding: 0; list-style: none; }
+.chip { background: var(--surface-2); border: 1px solid var(--border); border-radius: 999px; padding: 3px 10px; font-size: 13px; }
+.chip .count { color: var(--text-muted); margin-left: 4px; font-variant-numeric: tabular-nums; }
+.resources:empty + .footnote { margin-top: 0; }
 
-.explainer {
-  margin-top: 10px; padding: 12px 14px; border-radius: 8px; background: var(--surface-2);
-  color: var(--text-secondary); font-size: 13px; line-height: 1.5;
-}
-.explainer h3 { font-size: 13px; color: var(--text-primary); margin: 10px 0 4px; }
-.explainer h3:first-child { margin-top: 0; }
-.explainer p, .explainer ul { margin: 0 0 6px; }
-.explainer ul { padding-left: 18px; }
-.footnote .link { font-size: inherit; }
 
 /* "?" help with a popover (Settings) */
 .help {
@@ -417,3 +461,47 @@ a.button:hover { text-decoration: none; }
 .stop-button { margin-left: -12px; }
 .stopped { max-width: 560px; margin: 18vh auto; text-align: center; color: var(--text-secondary); }
 .stopped h1 { color: var(--text-primary); font-size: 22px; margin-bottom: 8px; }
+
+/* Run page: the seed under the world name (selectable, to copy) */
+.run-seed { margin-bottom: 2px; }
+.run-seed code { user-select: all; color: var(--text-secondary); }
+.copy-button {
+  margin-left: 6px; padding: 1px 7px; font: inherit; font-size: 11px; cursor: pointer;
+  color: var(--text-secondary); background: transparent; border: 1px solid var(--border, #333); border-radius: 4px;
+}
+.copy-button:hover { color: var(--text-primary); }
+
+/* Score page (#score/<run>): the model's equation, drawn with HTML. */
+.score-hero { display: flex; gap: 24px; align-items: center; flex-wrap: wrap; }
+.score-hero .label { color: var(--text-secondary); font-size: 13px; }
+.score-value { font-size: 36px; font-weight: 600; font-variant-numeric: tabular-nums; }
+.score-hero .sub { flex: 1 1 360px; margin: 0; }
+.m-eq { display: flex; flex-wrap: wrap; align-items: center; gap: 0.15em 0.3em; margin: 14px 0; padding: 14px 16px;
+  background: var(--surface-2); border-radius: 8px; overflow-x: auto;
+  font-family: "Cambria Math", "STIX Two Math", "Latin Modern Math", "Times New Roman", serif; font-size: 19px; }
+.m-var { font-style: italic; white-space: nowrap; }
+.m-var sub, .m-var sup { font-size: 0.65em; font-style: normal; }
+.m-var sup + sub { margin-left: -0.6em; }
+.m-op { padding: 0 0.1em; }
+.m-frac { display: inline-flex; flex-direction: column; align-items: center; vertical-align: middle; font-size: 0.92em; }
+.m-num { padding: 0 0.3em 0.1em; border-bottom: 1px solid currentColor; display: flex; gap: 0.25em; align-items: baseline; }
+.m-den { padding: 0.1em 0.3em 0; display: flex; gap: 0.25em; align-items: baseline; }
+.m-sum { display: inline-flex; flex-direction: column; align-items: center; line-height: 1; }
+.m-sigma { font-size: 1.7em; }
+.m-lim { font-size: 0.6em; min-height: 0.8em; }
+.m-paren { font-size: 1.9em; font-weight: 300; line-height: 1; }
+.m-bar { text-decoration: overline; }
+.m-note { font-family: system-ui, sans-serif; font-size: 12px; color: var(--text-muted); font-style: normal; }
+.score-table td.behind { color: var(--status-critical); }
+.score-table td.ahead { color: var(--status-good); }
+.score-table tfoot td { border-top: 1px solid var(--border); padding-top: 8px; }
+.score-sum { font-variant-numeric: tabular-nums; line-height: 1.7; }
+.vars-table td.sym { white-space: nowrap; font-family: "Cambria Math", "STIX Two Math", "Times New Roman", serif; font-size: 16px; }
+.vars-table td.sym .m-var sub, .vars-table td.sym .m-var sup { font-size: 0.7em; }
+.m-cases { display: inline-flex; flex-direction: column; gap: 4px; padding-left: 10px; border-left: 2px solid currentColor; }
+.m-cases > span { display: flex; align-items: baseline; gap: 0.3em; }
+.m-cases .m-note { margin-left: 0.8em; }
+.credits { margin: 0 0 8px; padding-left: 20px; line-height: 1.6; }
+.credits li { margin-bottom: 6px; }
+.vars-table td:nth-child(2) { white-space: normal; }
+.vars-table td:nth-child(3) { white-space: nowrap; }

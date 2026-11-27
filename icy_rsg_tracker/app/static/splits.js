@@ -164,6 +164,7 @@ function draw() {
   $("splits-over-time-note").textContent = segment
     ? `Every run that reached both${adv ? "" : " splits"}, oldest to newest, with a moving average.`
     : `Every run that ${verb} this ${adv ? "advancement" : "split"}, oldest to newest, with a moving average.`;
+  $("splits-over-time-note").textContent += " Click a dot to view the corresponding run.";
   const whole = split === "nether" || adv ? "runs played" : "nether enters";
   const prevCount = segment ? data.summary.stats.splits[start[0]].count : null;
   const mean = sorted.reduce((a, b) => a + b, 0) / sorted.length;
@@ -221,9 +222,9 @@ function drawOverTime(timed, plain) {
     x: i,
     y: t.ms,
     emphasis: false,
+    href: `#run/${encodeURIComponent(t.run.run_id)}`,
     title: `${t.run.world_number == null ? t.run.world_name : `#${t.run.world_number}`} · ${fmt.dateTime(t.run.date)}`,
-    rows: [{ value: fmt.time(t.ms), name: plain },
-           { value: fmt.timeTenths(line[i].y), name: `average of last ${Math.min(i + 1, MOVING_AVERAGE)}` }],
+    rows: [{ value: fmt.time(t.ms), name: plain }],
   })), {
     name: `${plain} times over time`, xAxis: "index", xTicks, yTickFormat: fmt.timeShort, line,
     legend: [{ label: "Each run", key: "muted" }, { label: `Average of last ${MOVING_AVERAGE} runs`, key: "line" }],

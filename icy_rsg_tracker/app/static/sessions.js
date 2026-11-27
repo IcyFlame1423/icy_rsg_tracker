@@ -2,7 +2,7 @@
 // window; #sessions/<id> shows one session in detail.
 import * as fmt from "./fmt.js";
 import { lineChart, scatterChart, TIME_STEPS } from "./charts.js";
-import { $, getJSON, h, latestOnly, plural, PROGRESSION, SPLITS, tile, windowQuery } from "./common.js";
+import { $, getJSON, h, latestOnly, plural, PROGRESSION, SPLITS, splitTime, tile, windowQuery } from "./common.js";
 import { createTable } from "./table.js";
 import { createRunsTable } from "./runs-table.js";
 
@@ -37,6 +37,9 @@ const trend = {
 };
 if (!METRICS.some((m) => m.id === trend.metric)) trend.metric = "nph";
 if (!PROGRESSION.some(([k]) => k === trend.split)) trend.split = "nether";
+// The split whose runs the session timeline highlights.
+let timelineSplit = localStorage.getItem("timelineSplit");
+if (!PROGRESSION.some(([k]) => k === timelineSplit)) timelineSplit = "nether";
 const fetchDetail = latestOnly((id) => Promise.all([
   getJSON(`/api/summary?${windowQuery({ window: "session", session: id })}`),
   getJSON(`/api/runs?${windowQuery({ window: "session", session: id })}`),
@@ -99,6 +102,13 @@ export const sessionsPage = {
       trend.split = split.value;
       localStorage.setItem("trendSplit", trend.split);
       if (allSessions) drawTrends();
+    });
+    const highlight = $("timeline-split");
+    highlight.replaceChildren(...PROGRESSION.map(([k, name]) => new Option(`Reached ${name.toLowerCase()}`, k, false, k === timelineSplit)));
+    highlight.addEventListener("change", () => {
+      timelineSplit = highlight.value;
+      localStorage.setItem("timelineSplit", timelineSplit);
+      if (detail) drawTimeline(detail.runs);
     });
     listTable = createTable($("sessions-table"), {
       sort: { id: "session", dir: "desc" }, pageSize: 100, empty: "No sessions in this time window.",
@@ -176,14 +186,15 @@ function drawTimeline(runs) {
     return {
       x: new Date(r.date).getTime(),
       y: r.final_igt ?? 0,
-      emphasis: r.splits.nether != null,
+      emphasis: splitTime(r, timelineSplit) != null,
       title: `${r.world_number == null ? r.world_name : `#${r.world_number}`} · ${fmt.clock(r.date)}`,
       rows: [{ value: fmt.time(r.final_igt), name: r.result === "finished" ? "finished" : "reset at" }, ...reached],
     };
   }), {
     name: "Runs in this session: time of day against in-game time when the run ended",
     yTickFormat: fmt.timeShort,
-    legend: [{ label: "Entered nether", key: "emphasis" }, { label: "Other runs", key: "muted" }],
+    legend: [{ label: `Reached ${(PROGRESSION.find(([k]) => k === timelineSplit)[1]).toLowerCase()}`, key: "emphasis" },
+             { label: "Other runs", key: "muted" }],
   });
 }
 

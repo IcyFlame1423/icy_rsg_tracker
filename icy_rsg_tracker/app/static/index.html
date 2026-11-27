@@ -165,8 +165,14 @@
         <div id="session-body">
           <div class="tiles six" id="session-tiles"></div>
           <section class="card spaced">
-            <h2>Timeline</h2>
-            <p class="sub">Each run: time of day against the in-game time when it ended.</p>
+            <div class="card-head">
+              <h2>Timeline</h2>
+              <label class="select-label">
+                <span class="sr-only">Highlight runs that reached</span>
+                <select id="timeline-split"></select>
+              </label>
+            </div>
+            <p class="sub">Each run: time of day against the in-game time when it ended. Runs that reached the chosen split are highlighted.</p>
             <div class="chart" id="session-timeline"></div>
           </section>
           <section class="card spaced">
@@ -177,6 +183,15 @@
       </div>
     </main>
 
+    <!-- How a run's score is worked out: #score/<run_id> -->
+    <main id="page-score" hidden>
+      <div class="run-nav">
+        <a href="#runs" class="back-link" id="score-back">← Run</a>
+      </div>
+      <h1 id="score-title" class="page-title"></h1>
+      <div id="score-body"></div>
+    </main>
+
     <!-- One run: #run/<run_id> -->
     <main id="page-run" hidden>
       <div class="run-nav">
@@ -184,10 +199,11 @@
         <span class="run-steps" id="run-steps"></span>
       </div>
       <h1 id="run-title" class="page-title"></h1>
+      <p class="sub run-seed" id="run-seed"></p>
       <p class="sub" id="run-sub"></p>
       <div id="run-body">
         <p class="notice" id="run-cheats" hidden></p>
-        <div class="tiles four" id="run-tiles"></div>
+        <div class="tiles five" id="run-tiles"></div>
         <section class="card spaced">
           <div class="card-head">
             <h2>Splits</h2>
@@ -200,11 +216,46 @@
           <div class="table-scroll"><table class="data-table" id="run-splits"></table></div>
           <p class="sub footnote">Segment: time since the previous split. vs average: green is faster than your average, red slower.</p>
         </section>
-        <section class="card spaced resources-card" id="run-resources-card" aria-label="Resources collected">
+        <section class="card spaced resources-card" id="run-resources-card" aria-label="Items obtained">
           <div class="resources" id="run-resources"></div>
           <p class="sub footnote" id="run-resources-note"></p>
-          <div class="explainer" id="run-resources-explainer" hidden></div>
         </section>
+        <div class="phase-row">
+        <section class="card spaced phase-card" id="run-overworld-card">
+          <h2><button type="button" class="phase-toggle" aria-expanded="false" aria-controls="run-overworld-body">
+            Overworld<svg class="phase-chevron" viewBox="0 0 16 16" aria-hidden="true"><path d="M6 3l5 5-5 5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></button></h2>
+          <div class="phase-body" id="run-overworld-body" hidden>
+            <p class="sub" id="run-overworld-note"></p>
+            <div id="run-overworld"></div>
+          </div>
+        </section>
+        <section class="card spaced phase-card" id="run-nether-card">
+          <h2><button type="button" class="phase-toggle" aria-expanded="false" aria-controls="run-nether-body">
+            Nether<svg class="phase-chevron" viewBox="0 0 16 16" aria-hidden="true"><path d="M6 3l5 5-5 5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></button></h2>
+          <div class="phase-body" id="run-nether-body" hidden>
+            <p class="sub" id="run-nether-note"></p>
+            <div id="run-nether"></div>
+          </div>
+        </section>
+        </div>
+        <div class="phase-row">
+        <section class="card spaced phase-card" id="run-stronghold-card">
+          <h2><button type="button" class="phase-toggle" aria-expanded="false" aria-controls="run-stronghold-body">
+            Stronghold<svg class="phase-chevron" viewBox="0 0 16 16" aria-hidden="true"><path d="M6 3l5 5-5 5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></button></h2>
+          <div class="phase-body" id="run-stronghold-body" hidden>
+            <p class="sub" id="run-stronghold-note"></p>
+            <div id="run-stronghold"></div>
+          </div>
+        </section>
+        <section class="card spaced phase-card" id="run-end-card">
+          <h2><button type="button" class="phase-toggle" aria-expanded="false" aria-controls="run-end-body">
+            End<svg class="phase-chevron" viewBox="0 0 16 16" aria-hidden="true"><path d="M6 3l5 5-5 5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></button></h2>
+          <div class="phase-body" id="run-end-body" hidden>
+            <p class="sub" id="run-end-note"></p>
+            <div id="run-end"></div>
+          </div>
+        </section>
+        </div>
         <section class="card spaced">
           <h2>Deaths</h2>
           <p class="sub" id="run-deaths-note"></p>

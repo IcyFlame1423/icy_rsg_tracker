@@ -1,9 +1,10 @@
 // One run (#run/<run_id>): its splits against your averages, its advancements, and where
 // it sits in its session.
 import * as fmt from "./fmt.js";
-import { countedIcon, iconSlot, withIcon } from "./icons.js";
+import { countedIcon, iconSlot, itemIcon, withIcon } from "./icons.js";
 import { $, getJSON, h, latestOnly, PROGRESSION, state, tile } from "./common.js";
 import { hideTooltip, showTooltip } from "./charts.js";
+import { signedSeconds } from "./score.js";
 
 const SPLIT_LABEL = Object.fromEntries(PROGRESSION);
 const STRUCTURE_NAME = { bastion: "Bastion", fortress: "Fortress" };
@@ -38,10 +39,16 @@ export const runPage = {
       if (detail) drawTables();
     }));
     sync();
+    // The overworld/nether/stronghold/End cards open and close from their headings.
+    for (const toggle of document.querySelectorAll(".phase-toggle")) {
+      toggle.addEventListener("click", () => openPhase(toggle, toggle.getAttribute("aria-expanded") !== "true"));
+    }
   },
 
   async load(route) {
     setBack(route.from);
+    // They start closed each time a run is opened.
+    for (const toggle of document.querySelectorAll(".phase-toggle")) openPhase(toggle, false);
     const d = await fetchRun(route.runId);
     if (!d) return null;
     detail = d;
@@ -49,6 +56,11 @@ export const runPage = {
     return "";
   },
 };
+
+function openPhase(toggle, open) {
+  toggle.setAttribute("aria-expanded", String(open));
+  $(toggle.getAttribute("aria-controls")).hidden = !open;
+}
 
 /** "← Back to …" goes to where the run was opened from (default: the Runs page). */
 function setBack(from) {
@@ -67,9 +79,35 @@ function setBack(from) {
   }
 }
 
+/** A small button that copies text to the clipboard, and says so for a moment. */
+function copyButton(text, label) {
+  const button = h("button", { type: "button", class: "copy-button", "aria-label": label, title: label }, "Copy");
+  button.addEventListener("click", async () => {
+    let ok;
+    try {
+      await navigator.clipboard.writeText(text);
+      ok = true;
+    } catch {
+      // Older way, for when the clipboard API isn't allowed.
+      const area = h("textarea", { style: "position:fixed;opacity:0" }, text);
+      document.body.append(area);
+      area.select();
+      ok = document.execCommand("copy");
+      area.remove();
+    }
+    button.textContent = ok ? "Copied" : "Couldn't copy";
+    clearTimeout(button.reset);
+    button.reset = setTimeout(() => { button.textContent = "Copy"; }, 1500);
+  });
+  return button;
+}
+
 function draw() {
   const { run, session, times } = detail;
   $("run-title").textContent = worldName(run);
+  $("run-seed").replaceChildren("Seed: ", ...(run.seed
+    ? [h("code", {}, run.seed), copyButton(run.seed, "Copy seed")]
+    : ["/seed was not run in the world"]));
   $("run-sub").replaceChildren(
     fmt.dateTime(run.date), " · ",
     h("a", { href: `#sessions/${session.id}` }, `Session #${session.id}`),
@@ -101,124 +139,274 @@ function draw() {
       ? `${fmt.timeTenths(Math.max(0, run.final_rta - run.final_igt))} more than in-game` : ""),
     tile("Furthest split", furthest ? withIcon(iconKey(furthest[0]), splitLabel(furthest[0])) : "None",
       `${reached} of ${PROGRESSION.length} splits`),
+    scoreTile(),
   );
   drawResources(run);
+  drawPhases();
   drawDeaths(run);
   drawTables();
 }
 
-// The resources row: icon with the count in its corner, like the inventory.
-const RESOURCES = ["blaze_rods", "ender_pearls", "beds", "respawn_anchors", "fire_resistance", "obsidian"];
-// What each one means, for its hover tooltip.
-const RESOURCE_NAMES = {
-  blaze_rods: "Total blaze rods obtained in the run",
-  ender_pearls: "Total ender pearls obtained in the run",
-  beds: "Total white beds that could be made in the run",
-  respawn_anchors: "Total respawn anchors that could be made in the run",
-  fire_resistance: "Total fire resistance potions obtained in the run",
-  obsidian: "Total obsidian obtained in the run",
+/** The run's score against a top player (finished Hermes runs only), linking to how it's worked out. */
+function scoreTile() {
+  const link = h("a", { href: `#score/${encodeURIComponent(detail.run.run_id)}` }, "How it's worked out →");
+  return detail.score
+    ? tile("Score", signedSeconds(detail.score.score), h("span", {}, "vs a top player · ", link))
+    : tile("Score", "–", h("span", { title: detail.unscored_reason ?? "" }, "not scored · ", link));
+}
+
+// The items row: icon with the count in its corner, like the inventory.
+const ITEMS = ["blaze_rods", "ender_pearls", "beds", "respawn_anchors", "fire_resistance", "obsidian"];
+// What each count is, for its hover tooltip.
+const ITEM_NAMES = {
+  blaze_rods: "Blaze rods picked up from blazes",
+  ender_pearls: "Most ender pearls held at once",
+  beds: "Beds obtained (crafted or found)",
+  respawn_anchors: "Respawn anchors obtained",
+  fire_resistance: "Fire resistance potions obtained",
+  obsidian: "Most obsidian held at once",
 };
 
+// The breakdown under each count in its tooltip: [detail name, what it means].
+const ITEM_DETAILS = {
+  blaze_rods: [["blazes_killed", "blazes killed"]],
+  ender_pearls: [["pearls_used", "thrown before the End"], ["pearls_into_eyes", "crafted into eyes of ender"]],
+  beds: [["beds_nether", "blown up in the nether (outside a fortress)"], ["beds_fortress", "blown up in a fortress"],
+         ["beds_end", "used in the End"], ["beds_lost", "lost (left placed, or dropped and not picked up)"]],
+  respawn_anchors: [["anchors_end", "used in the End"],
+                    ["anchors_lost", "lost (blown up or left placed, or dropped and not picked up)"]],
+  fire_resistance: [["fire_resistance_used", "drunk or thrown"]],
+  obsidian: [["obsidian_bastion", "from inside a bastion"]],
+};
+
+/** Tooltip rows for an item: its count, then what happened to it. */
+function itemRows(key, count) {
+  const details = detail.item_details ?? {};
+  const rows = [{ value: fmt.int(count), name: "in total", key: false }];
+  for (const [name, text] of ITEM_DETAILS[key]) {
+    if (details[name] != null) rows.push({ value: fmt.int(details[name]), name: text, key: false });
+  }
+  if (key === "obsidian" && details.diamond_pickaxe != null) {
+    rows.push({ value: details.diamond_pickaxe ? "Yes" : "No", name: "diamond pickaxe", key: false });
+  }
+  return rows;
+}
+
 function drawResources(run) {
-  const res = detail.resources;
-  $("run-resources-card").hidden = !res;
-  if (!res) return;  // the record is gone, so there are no item statistics
-  $("run-resources").replaceChildren(...RESOURCES.map((key) => {
-    const { count, detail: text } = res[key];
-    const name = RESOURCE_NAMES[key];
-    // Only the beds and anchors have a worked-out detail worth showing ("10 white wool, ...").
-    const rows = [{ value: fmt.int(count), name: "" }];
-    if (key === "beds" || key === "respawn_anchors") rows.push({ value: "", name: text.split(": ")[1] ?? "" });
+  const items = detail.items;
+  const note = $("run-resources-note");
+  if (!items) {
+    // Counted from the Hermes mod's play log, which older runs don't have.
+    $("run-resources").replaceChildren();
+    note.textContent = "Item counts aren't available for this run: they come from the Hermes mod's play log, " +
+      "and this run doesn't have one (it was played before Hermes was installed, or its world was deleted " +
+      "before the tracker read it).";
+    return;
+  }
+  $("run-resources").replaceChildren(...ITEMS.map((key) => {
+    const count = items[key], name = ITEM_NAMES[key];
+    const rows = itemRows(key, count);
     const tip = (x, y) => showTooltip(x, y, name, rows);
     // Without the game's textures, fall back to the number and its name.
     const art = countedIcon(key, count) ?? h("span", { class: "resource-text" }, fmt.int(count));
     const el = h("div", {
-      class: "resource", tabindex: "0", "aria-label": `${name}: ${count}`,
+      class: "resource", tabindex: "0", "aria-label": `${name}: ${rows.map((r) => `${r.value} ${r.name}`).join(", ")}`,
       onpointermove: (e) => tip(e.clientX, e.clientY), onpointerleave: hideTooltip,
       onfocus: () => { const r = el.getBoundingClientRect(); tip(r.right, r.top); }, onblur: hideTooltip,
     }, art, state.textures ? null : h("span", { class: "resource-name", "aria-hidden": "true" }, name));
     return el;
   }));
-  const note = $("run-resources-note"), explainer = $("run-resources-explainer");
-  const sentences = [];
-  if (run.deaths) sentences.push("Because this run had at least 1 death, these counts are estimated.");
-  if (run.cheats_from_rta != null) sentences.push("Includes anything collected after opening to LAN with cheats.");
-  const parts = [sentences.join(" ")];
-  if (run.deaths) {
-    const more = h("button", { type: "button", class: "link", "aria-expanded": "false",
-                               "aria-controls": "run-resources-explainer" }, "Learn more");
-    more.addEventListener("click", () => {
-      explainer.hidden = !explainer.hidden;
-      more.setAttribute("aria-expanded", String(!explainer.hidden));
-      more.textContent = explainer.hidden ? "Learn more" : "Show less";
-    });
-    parts.push(" ", more);
-  }
-  note.replaceChildren(...parts);
-  explainer.hidden = true;
-  explainer.replaceChildren(...(run.deaths ? explanation(run, res).filter(Boolean) : []));
+  note.textContent = run.cheats_from_rta != null ? "Only counts what was obtained before the world was opened to LAN." : "";
 }
 
-/** How the counts are worked out, and why runs with deaths are only estimates. */
-function explanation(run, res) {
-  const n = run.deaths, divisor = res.pickup_divisor;
-  const repicked = divisor - 1;  // deaths whose items were picked up again
-  const thisRun = run.result === "finished"
-    ? `This run had ${n === 1 ? "1 death" : `${n} deaths`} and was finished, so items are counted as picked up ` +
-      `again after ${n === 1 ? "it" : "each of them"}.`
-    : n === 1
-      ? "This run had 1 death and was reset, so nothing is counted as picked up again."
-      : `This run had ${n} deaths and was reset, so items are counted as picked up again after ${repicked === 1 ? "the first" : `the first ${repicked}`}.`;
-  const times = run.death_times?.length
-    ? ` The game log places ${n === 1 ? "the death" : "the deaths"} at ${run.death_times.map(fmt.time).join(", ")} (in-game).`
-    : "";
-  return [
-    h("h3", {}, "How these are counted"),
-    h("p", {}, "The counts come from the game's item statistics, which SpeedRunIGT saves with each run: items " +
-      "picked up, minus items you dropped. Beds and respawn anchors are what the materials you collected could make " +
-      "(beds: 3 wool of one colour and 3 planks, with 4 string making a white wool; anchors: 6 crying obsidian and " +
-      "3 glowstone). Where the game shows you crafted more than your pickups explain, the crafted amount is used."),
-    h("h3", {}, "Why deaths make them estimates"),
-    h("p", {}, "When you die, your items drop, and picking them back up counts them as picked up again. The game " +
-      "only keeps totals for the whole run, not when each item was picked up, so the extra pickups can't be found " +
-      "exactly. Instead, it's assumed that everything you'd collected was in your inventory at each death, except " +
-      "what you'd used up by then:"),
-    h("ul", {},
-      h("li", {}, "Finished: you picked your items back up after every death."),
-      h("li", {}, "Reset: you picked them back up after every death but the last (with 1 death, never).")),
-    h("p", {}, "Each time you pick your items back up, you pick up what you'd collected minus what you'd used, so " +
-      "collected = (pickups + used before each of those deaths) ÷ (1 + those deaths). With nothing used, that's " +
-      "the pickups divided by 1 + those deaths."),
-    h("p", {}, thisRun + times),
-    h("h3", {}, "What's assumed used up before a death"),
-    h("ul", {},
-      h("li", {}, "Obsidian: 10 placed once past the blind (the blind portal), 20 once in the stronghold."),
-      h("li", {}, "Fire resistance: one potion kept active from a minute before entering the fortress until the " +
-        "stronghold, each lasting 3:00 (drinkable and splash alike), so a potion per 3:00 of that stretch by the death."),
-      h("li", {}, "Ender pearls: 2 between the first and second structures, and 2 between the blind and the " +
-        "stronghold; 1 for a stretch a death came partway through."),
-      h("li", {}, "Respawn anchor materials: a death reset in the nether (between entering it and the blind) " +
-        "means a respawn anchor was placed and left behind, so 6 crying obsidian and 3 glowstone (12 dust) each, " +
-        "from that death on."),
-      h("li", {}, "Blaze rods: a run that entered the End must have had at least 6 (for 12 eyes of ender), so " +
-        "the estimate is never below 6 for those runs."),
-      h("li", {}, "Everything else: nothing.")),
-    run.death_times?.length ? null : h("p", {}, "This run's deaths couldn't be placed in the game log, so nothing is " +
-      "assumed used: pickups are simply divided by " + divisor + "."),
-    h("h3", {}, "What can make them wrong"),
-    h("ul", {},
-      h("li", {}, "Anything you first got after a death is counted as picked up again too, so it reads low."),
-      h("li", {}, "If you didn't go back for your items after a death (or went back after the last one before " +
-        "resetting), the counts read low (or high)."),
-      h("li", {}, "Items stored in a chest before a death don't drop, so they aren't picked up again, and the " +
-        "estimate reads low for them."),
-      h("li", {}, "Items used up before a death beyond the assumptions above (more pearls thrown, a potion " +
-        "wasted, obsidian placed elsewhere) shift the estimate: it reads low for them."),
-      h("li", {}, "Items taken straight out of a chest aren't in the game's statistics at all, unless you crafted " +
-        "something from them."),
-      h("li", {}, "All potions are counted as fire resistance, the only ones piglins barter."),
-      h("li", {}, "Crafted amounts aren't affected by deaths, so they're used as they are.")),
-  ];
+// ---- Overworld, nether, stronghold, End (from the Hermes play log and ghost) ----------------
+
+const STRUCTURE_NAMES = {
+  buried_treasure: "Buried treasure", shipwreck: "Shipwreck", village: "Village", ruined_portal: "Ruined portal",
+  desert_pyramid: "Desert temple", jungle_pyramid: "Jungle temple", ocean_ruin: "Ocean ruin",
+  mineshaft: "Mineshaft", igloo: "Igloo", swamp_hut: "Witch hut", pillager_outpost: "Pillager outpost",
+  monument: "Ocean monument", mansion: "Woodland mansion", stronghold: "Stronghold",
+  bastion_remnant: "Bastion", fortress: "Fortress",
+};
+const lower = (s) => s.charAt(0).toLowerCase() + s.slice(1);
+
+/** "spruce_planks" -> "Spruce planks", "splash_potion[fire_resistance]" -> "Splash potion of fire resistance". */
+function itemName(id) {
+  const [, base, potion] = id.match(/^([^[]+)(?:\[(.+)\])?$/) ?? [null, id];
+  const name = base.replaceAll("_", " ");
+  const text = potion ? `${name} of ${potion.replace(/^(long|strong)_/, "").replaceAll("_", " ")}` : name;
+  return text.charAt(0).toUpperCase() + text.slice(1);
+}
+const structureName = (s) => STRUCTURE_NAMES[s] ?? itemName(s);
+
+// [key, name, the item whose icon stands for it]
+const RAW = [
+  ["planks", "Planks", "oak_planks"], ["other_blocks", "Other blocks", "dirt"], ["iron", "Iron", "iron_ingot"],
+  ["gold", "Gold", "gold_ingot"], ["diamonds", "Diamonds", "diamond"], ["cobblestone", "Cobblestone", "cobblestone"],
+  ["food", "Food", "bread"],
+];
+const RAW_HELP = {
+  planks: "Planks (logs count as 4, sticks as half; tools, boats and crafting tables as the planks in them)",
+  other_blocks: "Other blocks (any block that isn't one of the others; beds aren't counted)",
+  iron: "Iron (ingots, plus the iron in tools, buckets and armor: a bucket is 3)",
+  gold: "Gold (ingots, plus the gold in tools and armor: a nugget is a ninth)",
+  diamonds: "Diamonds (plus the diamonds in tools and armor)",
+  cobblestone: "Cobblestone (plus the cobblestone in stone tools and furnaces)",
+  food: "Food items",
+};
+
+const blocks = (n) => (n == null ? "–" : `${fmt.int(n)} ${n === 1 ? "block" : "blocks"}`);
+const amount = (n) => (Number.isInteger(n) ? fmt.int(n) : fmt.num(n));
+
+/** Show a tooltip while hovering or focusing an element. */
+function withTip(el, title, rows) {
+  if (!rows?.length) return el;
+  const tip = (x, y) => showTooltip(x, y, title, rows);
+  el.tabIndex = 0;
+  el.addEventListener("pointermove", (e) => tip(e.clientX, e.clientY));
+  el.addEventListener("pointerleave", hideTooltip);
+  el.addEventListener("focus", () => { const r = el.getBoundingClientRect(); tip(r.right, r.top); });
+  el.addEventListener("blur", hideTooltip);
+  return el;
+}
+const tipTile = (label, value, note, title, rows) => withTip(tile(label, value, note), title, rows);
+
+/** A tile with an item's picture on its right (left as it is without the game's textures). */
+function art(tileNode, itemId) {
+  const pic = itemIcon(itemId);
+  if (pic) {
+    tileNode.classList.add("has-art");
+    tileNode.append(h("span", { class: "tile-art" }, pic));
+  }
+  return tileNode;
+}
+/** Two columns: main on the left, side (tiles) taking the rest of the width. */
+const split = (main, side) => h("div", { class: "phase-split" },
+  h("div", { class: "phase-main" }, main), h("div", { class: "phase-side" }, side));
+const partRows = (parts) => Object.entries(parts ?? {}).map(([id, n]) => ({ value: fmt.int(n), name: itemName(id), key: false }));
+const section = (title, ...body) => [h("h3", {}, title), ...body.filter((x) => x != null)];
+const tiles = (...list) => h("div", { class: "tiles" }, list);
+const nothing = (text) => h("p", { class: "sub" }, text);
+
+function drawPhases() {
+  const phases = detail.phases;
+  const cards = ["overworld", "nether", "stronghold", "end"];
+  for (const k of cards) $(`run-${k}-note`).textContent = "";
+  if (!phases) {
+    const why = detail.items
+      ? "Not filled in yet for this run: use Settings → Rebuild from records."
+      : "Not available for this run: this comes from the Hermes mod's play log, which this run doesn't have.";
+    for (const k of cards) {
+      $(`run-${k}`).replaceChildren();
+      $(`run-${k}-note`).textContent = why;
+    }
+    return;
+  }
+  const notes = [];
+  if (!phases.distances) notes.push("Distances need the Hermes ghost file, which this run doesn't have.");
+  if (detail.run.cheats_from_rta != null) notes.push("Only counts what happened before the world was opened to LAN.");
+  drawOverworld(phases.overworld);
+  drawNether(phases.nether);
+  drawStronghold(phases.stronghold);
+  drawEnd();
+  $("run-overworld-note").textContent = notes.join(" ");
+  if (notes.length) $("run-nether-note").textContent = notes.join(" ");
+}
+
+function drawOverworld(ow) {
+  const looted = ow.structures.filter((s) => s.looted);
+  const visited = [...new Set(ow.structures.filter((s) => !s.looted).map((s) => structureName(s.structure)))];
+  const body = section("Structures looted",
+    looted.length
+      ? h("ul", { class: "chips" }, looted.map((s) => h("li", { class: "chip" }, structureName(s.structure))))
+      : nothing("None (no chest opened in a structure before the nether)."),
+    visited.length ? h("p", { class: "sub" }, `Also went into (no chest opened): ${visited.join(", ")}.`) : null);
+  if (!ow.materials) {
+    body.push(nothing("Didn't enter the nether."));
+  } else {
+    const materials = section("Raw materials at nether enter", h("div", { class: "table-scroll" },
+      h("table", { class: "data-table materials" },
+        h("thead", {}, h("tr", {}, h("th", { scope: "col" }, "Material"), h("th", { scope: "col", class: "num" }, "Amount"))),
+        h("tbody", {}, RAW.map(([k, label, icon]) => withTip(h("tr", {},
+          h("td", {}, itemIcon(icon), label),
+          h("td", { class: "num strong" }, amount(ow.materials[k]))), RAW_HELP[k], partRows(ow.materials_from?.[k])))))));
+    const to = ow.to_nether;
+    const travel = section("From the last structure to enter", to
+      ? tiles(
+        art(tile("Time", fmt.timeTenths(to.ms), `from leaving the ${lower(structureName(to.structure))}`), "clock"),
+        art(tile("Distance", blocks(to.distance)), "oak_boat"))
+      : nothing("No structure before the nether (ocean ruins don't count)."));
+    body.push(split(materials, travel));
+  }
+  $("run-overworld").replaceChildren(...body);
+}
+
+function drawNether(ne) {
+  if (detail.times.nether == null) {
+    $("run-nether").replaceChildren(nothing("Didn't enter the nether."));
+    return;
+  }
+  const to = ne.to_structure;
+  const items = detail.items ?? {}, details = detail.item_details ?? {};
+  const stats = tiles(
+    art(to ? tile(`To the ${lower(structureName(to.structure))}`, blocks(to.distance), `Time: ${fmt.timeTenths(to.ms)}`)
+      : tile("To the first structure", "–", "no bastion or fortress"), "leather_boots"),
+    art(to ? tipTile("Blocks used on the way", fmt.int(to.blocks), null,
+      "Blocks placed on the way to the first structure", partRows(to.blocks_from))
+      : tile("Blocks used on the way", "–"), "dirt"),
+    art(tile("Fortress to first rod", ne.first_rod_ms == null ? "–" : fmt.timeTenths(ne.first_rod_ms)), "nether_brick_fence"),
+    art(tile("Blaze rate", details.blazes_killed ? `${fmt.int(items.blaze_rods)} / ${fmt.int(details.blazes_killed)}` : "–"),
+      "blaze_rod"),
+    art(ne.blind
+      ? tile("Blind to stronghold portal", blocks(ne.blind.nether_distance),
+        ne.blind.nether_distance ? `${blocks(ne.blind.nether_distance * 8)} in the overworld` : "the same portal")
+      : tile("Blind to stronghold portal", "–"), "obsidian"),
+  );
+  $("run-nether").replaceChildren(ne.fortress_slots
+    ? split(section("Inventory at fortress enter", inventory(ne.fortress_slots)), stats)
+    : stats);
+}
+
+// Empty armor and offhand slots show the game's outline of what goes there.
+const EMPTY_SLOT = { 39: "helmet", 38: "chestplate", 37: "leggings", 36: "boots", 40: "shield" };
+
+/** The inventory laid out as the game shows it: armor and offhand, the 27 slots, the hotbar.
+ *  slots: {slot number: [item id, count]}. Without the game's textures, a list instead. */
+function inventory(slots) {
+  if (!state.textures) {
+    const totals = new Map();
+    for (const [, [id, n]] of Object.entries(slots).sort((a, b) => a[0] - b[0])) totals.set(id, (totals.get(id) ?? 0) + n);
+    return h("ul", { class: "chips" }, [...totals].map(([id, n]) =>
+      h("li", { class: "chip" }, itemName(id), n > 1 ? h("span", { class: "count" }, `×${fmt.int(n)}`) : null)));
+  }
+  const slot = (i) => {
+    const [id, n] = slots[i] ?? [];
+    const el = h("div", { class: "inventory-slot", "aria-label": id ? `${itemName(id)} ×${n}` : null },
+      id ? itemIcon(id, n)
+        : EMPTY_SLOT[i] ? h("img", { class: "inventory-empty", alt: "", src: `/api/texture?name=item/empty_armor_slot_${EMPTY_SLOT[i]}` }) : null);
+    return id ? withTip(el, itemName(id), [{ value: fmt.int(n), name: n === 1 ? "item" : "items", key: false }]) : el;
+  };
+  const row = (from, cls = "") => h("div", { class: `inventory-row ${cls}`.trim() },
+    Array.from({ length: 9 }, (_, k) => slot(from + k)));
+  return h("div", { class: "inventory", role: "img", "aria-label": "Inventory" },
+    h("div", { class: "inventory-main" }, row(9), row(18), row(27), row(0, "hotbar")),
+    h("div", { class: "inventory-side" },
+      h("div", { class: "inventory-armor" }, [39, 38, 37, 36].map(slot)),
+      slot(40)));
+}
+
+function drawStronghold(sh) {
+  $("run-stronghold").replaceChildren(sh.eyes_placed == null
+    ? nothing("Didn't enter a stronghold.")
+    : tiles(art(tile("Eyes placed in the portal", fmt.int(sh.eyes_placed)), "ender_eye")));
+}
+
+function drawEnd() {
+  const d = detail.item_details ?? {};
+  $("run-end").replaceChildren(detail.times.end == null
+    ? nothing("Didn't enter the End.")
+    : tiles(art(tile("Beds used", fmt.int(d.beds_end)), "white_bed"),
+      art(tile("Respawn anchors used", fmt.int(d.anchors_end)), "respawn_anchor")));
 }
 
 function drawDeaths(run) {
@@ -307,7 +495,7 @@ function drawAdvancements(base) {
         h("td", { class: "num strong" }, fmt.time(ms)),
         h("td", { class: "num" }, fmt.timeTenths(a?.avg_ms)),
         h("td", { class: "num" }, vsCell(ms, a?.avg_ms)),
-        h("td", { class: "num" }, fmt.time(a?.best_ms), a && ms === a.best_ms ? h("span", { class: "pb" }, compare === "all" ? "PB" : "Best") : null),
+        h("td", { class: "num" }, fmt.time(a?.best_ms)),
         h("td", { class: "num" }, fmt.int(a?.count)));
     })));
 }

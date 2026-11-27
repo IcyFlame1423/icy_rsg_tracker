@@ -12,15 +12,22 @@ world is in progress: with SeedQueue it isn't updated when you play worlds from 
 import os
 import shutil
 from dataclasses import dataclass, field
+from datetime import datetime, timedelta
 from pathlib import Path
 
-from . import deaths, runs_csv, stats
+from . import deaths, hermes, phases, runs_csv, stats
 from .records import load_record, read_record_json
 
 # Why a record isn't tracked
 OTHER_INSTANCE = "from other instances"
 SET_SEED = "set seed"
 CHEATS_AT_START = "cheats on from world creation"
+
+# Hermes writes a world's play log as the world closes, which can be just after SpeedRunIGT
+# writes the record: runs this recent without one have their play log looked for again.
+PLAY_LOG_RECHECK = timedelta(seconds=60)
+# What runs.csv keeps from a play log, so it isn't lost when the world is deleted.
+PLAY_LOG_COLUMNS = ("seed", *hermes.ITEMS, *hermes.DETAILS, *phases.COLUMNS, "phases")
 
 
 @dataclass
@@ -44,8 +51,10 @@ class _InstanceState:
         self.path = path
         if rebuild and path.exists():
             shutil.copy2(path, path.with_suffix(".csv.bak"))
-        existing = [] if rebuild else runs_csv.load_rows(path)
-        self.by_id = {row["run_id"]: row for row in existing}
+        existing = runs_csv.load_rows(path)
+        # What came from play logs before, kept in a rebuild for worlds deleted since.
+        self.previous = {row["run_id"]: row for row in existing}
+        self.by_id = {} if rebuild else dict(self.previous)
         self.last_written = path.stat().st_mtime if (path.exists() and not rebuild) else 0
         self.result = InstanceResult()
         self.world_deaths = None  # {world name: WorldDeaths} from the game logs, read lazily
@@ -116,7 +125,15 @@ def import_records(cfg, rebuild=False, ignored=None, write_unchanged=True):
                 death_times = None
             if death_times is not None:  # the log's deaths match the record's, one for one
                 death_resets = [d.respawn for d in world.deaths]
-        state.by_id[run_id] = runs_csv.run_to_row(run, death_counts, death_times, death_resets)
+        row = runs_csv.run_to_row(run, death_counts, death_times, death_resets,
+                                  hermes.read_play_log(instance.minecraft_dir, run.world_name))
+        old = state.previous.get(run_id)
+        if old and not _has_play_log(row) and _has_play_log(old):  # the world is gone now
+            row.update({c: old[c] for c in PLAY_LOG_COLUMNS})
+        state.by_id[run_id] = row
+
+    for instance in cfg.instances:
+        _recheck_play_logs(instance, states[instance.name])
 
     for name, state in states.items():
         rows = list(state.by_id.values())
@@ -131,3 +148,22 @@ def import_records(cfg, rebuild=False, ignored=None, write_unchanged=True):
     for _, reason in ignored.values():
         result.ignored[reason] = result.ignored.get(reason, 0) + 1
     return result
+
+
+def _has_play_log(row):
+    return row["beds"] != ""  # every play log gives the item counts, even if they're 0
+
+
+def _recheck_play_logs(instance, state, now=None):
+    """Fill in what comes from the play log for runs that ended in the last PLAY_LOG_RECHECK,
+    if their play log has appeared since they were imported."""
+    if not instance.minecraft_dir:
+        return
+    since = runs_csv.format_date((now or datetime.now()) - PLAY_LOG_RECHECK)
+    for run_id, row in state.by_id.items():
+        if _has_play_log(row) or row["date"] < since:
+            continue
+        if log := hermes.read_play_log(instance.minecraft_dir, row["world_name"]):
+            row.update(runs_csv.play_log_columns(log))
+            state.result.updated += 1
+            state.result.changed_ids.append(run_id)

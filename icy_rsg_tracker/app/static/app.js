@@ -6,18 +6,21 @@ import { dashboard } from "./dashboard.js";
 import { runsPage } from "./runs.js";
 import { sessionsPage } from "./sessions.js";
 import { runPage } from "./run.js";
+import { scorePage } from "./score.js";
 import { splitsPage } from "./splits.js";
 import { settingsPage } from "./settings.js";
 
-const PAGES = { dashboard, runs: runsPage, run: runPage, sessions: sessionsPage, splits: splitsPage, settings: settingsPage };
+const PAGES = { dashboard, runs: runsPage, run: runPage, score: scorePage, sessions: sessionsPage, splits: splitsPage,
+                settings: settingsPage };
 const POLL_MS = 3000;
 
 /** "#sessions/39" -> {page: sessionsPage, sessionId: "39"}; "#run/<id>" -> {page: runPage, runId} */
 function parseRoute() {
   const [name, id] = location.hash.replace(/^#/, "").split("/");
   let page = PAGES[name] ?? dashboard;
-  const runId = page === runPage && id ? decodeURIComponent(id) : null;
-  if (page === runPage && !runId) page = runsPage;
+  const perRun = page === runPage || page === scorePage;
+  const runId = perRun && id ? decodeURIComponent(id) : null;
+  if (perRun && !runId) page = runsPage;
   return { page, runId, sessionId: page === sessionsPage && /^\d+$/.test(id ?? "") ? id : null,
            hash: location.hash };
 }
@@ -28,7 +31,8 @@ function show() {
   const previous = route;
   route = parseRoute();
   // Where the page was opened from (the run page's back link goes there).
-  route.from = previous?.page === runPage ? previous.from : previous?.hash;
+  // (from the score page, the run page keeps where it was opened from before)
+  route.from = previous?.page === runPage || previous?.page === scorePage ? previous.from : previous?.hash;
   for (const p of Object.values(PAGES)) {
     $(`page-${p.id}`).hidden = p !== route.page;
     const top = $(`top-${p.id}`);  // a page's section above the filter row

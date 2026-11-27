@@ -6,6 +6,7 @@ import re
 import tempfile
 import time
 import unittest
+from datetime import datetime, timedelta
 from pathlib import Path
 
 from icy_rsg_tracker import deaths, runs_csv
@@ -148,6 +149,42 @@ class ImportTest(unittest.TestCase):
         # Unchanged records aren't read again.
         r = import_records(self.cfg).instances["speedrun"]
         self.assertEqual((r.added, r.updated, r.total), (0, 0, 4))
+
+    def play_log(self, world, *events):
+        path = self.speedrun.minecraft_dir / "saves" / world / "hermes" / "play.log"
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text("".join(json.dumps({"time": 0, "type": t, "data": d}) + "\n" for t, d in events))
+
+    def test_seed_from_hermes_play_log(self):
+        self.speedrun.minecraft_dir = Path(self.tmp.name) / "minecraft"
+        self.play_log("Random Speedrun #1", ("initialize", {}), ("command", {"command": "seed"}),
+                      ("seed", {"seed": -4530634556500121041}), ("close", {}))
+        self.play_log("Random Speedrun #2", ("initialize", {}), ("close", {}))  # no /seed
+        self.write("a", make_record("Random Speedrun #1", T0, 1000))
+        self.write("b", make_record("Random Speedrun #2", T0, 1000))
+        self.write("c", make_record("Random Speedrun #3", T0, 1000))  # no play log at all
+        import_records(self.cfg)
+        self.assertEqual({r["world_name"]: r["seed"] for r in self.rows()},
+                         {"Random Speedrun #1": "-4530634556500121041", "Random Speedrun #2": "",
+                          "Random Speedrun #3": ""})
+        # Item counts: 0 with a play log (nothing obtained), blank without one.
+        self.assertEqual({r["world_name"]: r["beds"] for r in self.rows()},
+                         {"Random Speedrun #1": "0", "Random Speedrun #2": "0", "Random Speedrun #3": ""})
+
+    def test_seed_play_log_written_after_the_record(self):
+        from icy_rsg_tracker.importer import _recheck_play_logs, _InstanceState
+        self.speedrun.minecraft_dir = Path(self.tmp.name) / "minecraft"
+        now = datetime.now()
+        self.write("a", make_record("Random Speedrun #1", int(now.timestamp() * 1000), 1000))
+        import_records(self.cfg)
+        self.assertEqual(self.rows()[0]["seed"], "")
+        self.play_log("Random Speedrun #1", ("seed", {"seed": 42}), ("close", {}))
+        state = _InstanceState(self.cfg.runs_csv(self.speedrun), rebuild=False)
+        _recheck_play_logs(self.speedrun, state, now)  # ended just now: checked again
+        self.assertEqual(state.by_id["a"]["seed"], "42")
+        state = _InstanceState(self.cfg.runs_csv(self.speedrun), rebuild=False)
+        _recheck_play_logs(self.speedrun, state, now + timedelta(minutes=5))  # too long ago: left alone
+        self.assertEqual(state.by_id["a"]["seed"], "")
 
     def test_records_split_by_instance(self):
         self.cfg.instances.append(Instance("ranked", re.compile(r"^New World")))
@@ -499,83 +536,3 @@ class WatchTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
-
-
-class ResourcesTest(unittest.TestCase):
-    def record(self, picked, crafted=None, dropped=None, mined=None, deaths=0, completed=False):
-        stats = {"minecraft:picked_up": {f"minecraft:{k}": v for k, v in picked.items()},
-                 "minecraft:crafted": {f"minecraft:{k}": v for k, v in (crafted or {}).items()},
-                 "minecraft:dropped": {f"minecraft:{k}": v for k, v in (dropped or {}).items()},
-                 "minecraft:mined": {f"minecraft:{k}": v for k, v in (mined or {}).items()},
-                 "minecraft:custom": {"minecraft:deaths": deaths}}
-        return {"is_completed": completed, "date": T0, "stats": {"uuid": {"stats": stats}}}
-
-    def counts(self, rec):
-        from icy_rsg_tracker.resources import resources
-        return {k: v["count"] for k, v in resources(rec).items() if isinstance(v, dict)}
-
-    def test_counts(self):
-        rec = self.record({"blaze_rod": 7, "ender_pearl": 20, "string": 37, "acacia_log": 16,
-                           "crying_obsidian": 33, "glowstone_dust": 31, "potion": 4, "splash_potion": 4,
-                           "obsidian": 13},
-                          crafted={"white_wool": 10}, dropped={"blaze_rod": 1, "glowstone_dust": 3})
-        self.assertEqual(self.counts(rec), {"blaze_rods": 6, "ender_pearls": 20, "beds": 3,
-                                            "respawn_anchors": 2, "fire_resistance": 8, "obsidian": 13})
-
-    def test_beds_need_wool_of_one_colour_and_planks(self):
-        rec = self.record({"red_wool": 5, "white_wool": 3, "oak_planks": 6, "red_bed": 2}, mined={"red_bed": 1})
-        # 1 red + 1 white bed from wool (planks for exactly 2), plus 1 bed mined and picked up.
-        self.assertEqual(self.counts(rec)["beds"], 3)
-
-    def test_death_divisor(self):
-        from icy_rsg_tracker.resources import pickup_divisor
-        self.assertEqual(pickup_divisor(0, True), 1)
-        self.assertEqual(pickup_divisor(1, False), 1)  # one death, reset: items left behind
-        self.assertEqual(pickup_divisor(2, False), 2)  # picked up again once, left at the last
-        self.assertEqual(pickup_divisor(2, True), 3)   # picked up again after both
-        rec = self.record({"ender_pearl": 30}, deaths=2, completed=True)
-        self.assertEqual(self.counts(rec)["ender_pearls"], 10)
-
-    def test_estimate_allows_for_items_used_before_deaths(self):
-        from icy_rsg_tracker.resources import estimate
-        # 10 pearls, 2 used before one death, picked back up: 10 + 8 = 18 picked up.
-        self.assertEqual(estimate(18, [2]), 10)
-        self.assertEqual(estimate(18, [0]), 9)       # without usage: plain halving
-        # Everything used before the death: nothing to pick up again, so it adds nothing.
-        self.assertEqual(estimate(4, [5]), 4)
-
-    def test_usage_rules(self):
-        from icy_rsg_tracker.resources import _usage
-        m = 60_000
-        use = _usage({"bastion": 4 * m, "fortress": 8 * m, "blind": 11 * m, "stronghold": 14 * m})
-        self.assertEqual([use["obsidian"](t * m) for t in (5, 12, 15)], [0, 10, 20])
-        # Fire resistance from 7:00 (a minute before the fortress) to 14:00, 3:00 each.
-        self.assertEqual([use["fire_resistance"](t * m) for t in (6, 7.5, 10.5, 16)], [0, 1, 2, 3])
-        # Pearls: 2 from structure 1 (4:00) to 2 (8:00), 2 from blind (11:00) to stronghold (14:00).
-        self.assertEqual([use["ender_pearls"](t * m) for t in (3, 6, 9, 12, 15)], [0, 1, 2, 3, 4])
-
-    def test_death_times_used_when_known(self):
-        rec = self.record({"obsidian": 30}, deaths=1, completed=True)
-        rec["timelines"] = [{"name": "nether_travel_blind", "igt": 600_000, "rta": 600_000},
-                            {"name": "enter_stronghold", "igt": 800_000, "rta": 800_000}]
-        from icy_rsg_tracker.resources import resources
-        # Died in the stronghold: 20 obsidian placed, so 30 = total + (total - 20) -> 25.
-        self.assertEqual(resources(rec, [900_000])["obsidian"]["count"], 25)
-        self.assertEqual(resources(rec)["obsidian"]["count"], 15)  # time unknown: halved
-
-    def test_end_needs_six_blaze_rods(self):
-        from icy_rsg_tracker.resources import resources
-        rec = self.record({"blaze_rod": 12}, deaths=2, completed=True)  # 12 / 3 = 4
-        self.assertEqual(resources(rec)["blaze_rods"]["count"], 4)
-        rec["timelines"] = [{"name": "enter_end", "igt": 900_000, "rta": 900_000}]
-        self.assertEqual(resources(rec)["blaze_rods"]["count"], 6)
-
-    def test_nether_death_reset_uses_an_anchor(self):
-        from icy_rsg_tracker.resources import resources
-        rec = self.record({"crying_obsidian": 18, "glowstone_dust": 36}, deaths=1, completed=True)
-        rec["timelines"] = [{"name": "enter_nether", "igt": 200_000, "rta": 200_000}]
-        # A death reset in the nether: 6 crying obsidian and 12 dust used, then picked back up:
-        # 18 = total + (total - 6) -> 12 crying; 36 = total + (total - 12) -> 24 dust (6 glowstone).
-        res = resources(rec, [300_000], [True])
-        self.assertEqual(res["respawn_anchors"]["count"], 2)
-        self.assertEqual(resources(rec, [300_000], [False])["respawn_anchors"]["count"], 1)  # accidental: halved

@@ -35,7 +35,7 @@ function draw() {
     ? "No runs tracked yet. Play a run with SpeedRunIGT and it will show up here."
     : "No runs in this time window.";
   $("runs-table").hidden = data.runs.length === 0;
-  table.render(filtered(), data.pbs, data.advancements);
+  table.render(filtered(), {}, data.advancements);  // no PB badges here
   $("window-note").textContent = note();
 }
 

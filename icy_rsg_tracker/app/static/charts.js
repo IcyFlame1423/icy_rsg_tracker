@@ -34,7 +34,7 @@ export function showTooltip(clientX, clientY, title, rows) {
     const name = document.createElement("span");
     name.className = "tt-name";
     name.textContent = r.name;
-    row.append(key, value, name);
+    row.append(...(r.key === false ? [] : [key]), value, name);  // key: false = no series mark
     tip.appendChild(row);
   }
   tip.hidden = false;
@@ -223,6 +223,7 @@ export function lineChart(container, points, opts) {
  *        xTicks: [{x, label}] for xAxis "index" (thinned so labels don't collide),
  *        line: [{x, y}] drawn over the points (e.g. a moving average)}
  * Emphasis points are drawn in the series colour on top; the rest are muted context.
+ * A point with an href (e.g. "#run/<id>") opens it when clicked, or on Enter.
  */
 export function scatterChart(container, points, opts) {
   container.replaceChildren();
@@ -262,8 +263,10 @@ export function scatterChart(container, points, opts) {
   const x = (v) => m.left + ((v - x0) / (x1 - x0)) * pw;
   const y = (v) => m.top + ph - ((v - yMin) / (yMax - yMin)) * ph;
 
+  const links = points.some((p) => p.href);
   const svg = el("svg", { viewBox: `0 0 ${width} ${height}`, width, height, tabindex: 0, role: "img",
-                          "aria-label": `${opts.name}. Use arrow keys to step through runs.` }, container);
+                          "aria-label": `${opts.name}. Use arrow keys to step through runs` +
+                            (links ? ", and Enter to open one." : ".") }, container);
   yt.forEach((v, i) => {
     el("line", { class: v === 0 ? "baseline" : "gridline", x1: m.left, x2: m.left + pw, y1: y(v), y2: y(v) }, svg);
     el("text", { class: "tick", x: m.left - 8, y: y(v) + 4, "text-anchor": "end" }, svg).textContent = tickText[i];
@@ -322,8 +325,16 @@ export function scatterChart(container, points, opts) {
       clientX = box.left + x(p.x) * scale; clientY = box.top + y(p.y) * scale;
     }
     showTooltip(clientX, clientY, p.title, p.rows);
+    hit.style.cursor = p.href ? "pointer" : "";
   };
-  const hide = () => { current = -1; ring.setAttribute("visibility", "hidden"); hideTooltip(); };
+  const hide = () => {
+    current = -1; ring.setAttribute("visibility", "hidden"); hideTooltip(); hit.style.cursor = "";
+  };
+  const open = () => {
+    const href = points[current]?.href;
+    if (href) { hideTooltip(); location.href = href; }
+  };
+  hit.addEventListener("click", open);
   // Nearest point, so the pointer only has to be closest, not dead-centre.
   hit.addEventListener("pointermove", (e) => {
     const box = svg.getBoundingClientRect(), scale = width / box.width;
@@ -338,6 +349,7 @@ export function scatterChart(container, points, opts) {
   hit.addEventListener("pointerleave", hide);
   svg.addEventListener("blur", hide);
   svg.addEventListener("keydown", (e) => {
+    if (e.key === "Enter" && current >= 0) { open(); return; }
     if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(e.key)) return;
     e.preventDefault();
     let k = current < 0 ? byTime.length - 1 : byTime.indexOf(current);

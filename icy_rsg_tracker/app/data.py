@@ -11,8 +11,8 @@ import threading
 from collections import defaultdict
 from datetime import datetime, time, timedelta
 
-from .. import runs_csv
-from ..resources import resources
+from .. import model, runs_csv
+from ..hermes import DETAILS, ITEMS
 from ..advancements import ADVANCEMENTS, NAMES
 from ..records import SPLITS
 from ..stats import PROGRESSION, STRUCTURES, compute_raw, run_end, run_start, split_time
@@ -171,6 +171,7 @@ def run_json(row):
         "session_id": int(row["session_id"]),
         "world_name": row["world_name"],
         "world_number": _int(row["world_number"]),
+        "seed": row["seed"] or None,  # only if /seed was typed in the world
         "worlds_generated": _int(row["worlds_generated"]),
         "result": row["result"],
         "splits": {name: parse_time(row[name]) for name in SPLIT_NAMES},
@@ -267,11 +268,14 @@ def run_detail(store, instance_name, run_id):
     session = [r for r in rows if r["session_id"] == row["session_id"]]
     # Which structure was entered first (structure 1) and second.
     entered = sorted((t, name) for name in ("bastion", "fortress") if (t := parse_time(row[name])) is not None)
-    try:  # resources come from the record's item statistics, which runs.csv doesn't keep
-        record = json.loads((store.cfg.records_dir / f"{run_id}.json").read_text(encoding="utf-8"))
-        run_resources = resources(record, *runs_csv.parse_death_times(row["death_times"]))
-    except (OSError, ValueError):
-        run_resources = None  # record deleted or unreadable
+    # Item counts come from the Hermes play log: none for runs played without it.
+    items = {item: int(row[item]) for item in ITEMS} if row["beds"] != "" else None
+    # Where they went; blank for runs imported before these were kept (rebuild to fill in).
+    item_details = {name: int(row[name]) for name in DETAILS if row[name] != ""} if items else None
+    try:  # the overworld/nether/stronghold sections (phases.py); blank before they were kept
+        phases = json.loads(row["phases"]) if row["phases"] else None
+    except ValueError:
+        phases = None
     nethers = [i for i, r in enumerate(rows) if r["nether"]]
     before = [i for i in nethers if i < index]
     after = [i for i in nethers if i > index]
@@ -284,6 +288,10 @@ def run_detail(store, instance_name, run_id):
         "previous_nether_run": rows[before[-1]]["run_id"] if before else None,
         "next_nether_run": rows[after[0]]["run_id"] if after else None,
         "advancement_names": {name: NAMES[name] for name in ADVANCEMENTS if row[name]},
-        "resources": run_resources,
+        "items": items,
+        "item_details": item_details,
+        "phases": phases,
+        "score": model.score(row),
+        "unscored_reason": model.unscored_reason(row),
         "compare": {"all": _baseline(rows, times, row), "session": _baseline(session, times, row)},
     }

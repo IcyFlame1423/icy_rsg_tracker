@@ -76,3 +76,88 @@ class Textures:
             if png is not None:  # don't remember misses: the jar may turn up later
                 self._cache[name] = png
             return png
+
+    def item(self, item_id):
+        """How to draw an item's icon (see item_model), or None."""
+        if not ITEM_ID_RE.match(item_id or ""):
+            return None
+        key = ("item", item_id)
+        with self._lock:
+            if key in self._cache:
+                return self._cache[key]
+            jar = self.jar()
+            if not jar:
+                return None
+            try:
+                with zipfile.ZipFile(jar) as z:
+                    model = item_model(z, item_id)
+            except (OSError, zipfile.BadZipFile):
+                return None
+            self._cache[key] = model
+            return model
+
+
+ITEM_ID_RE = re.compile(r"^[a-z0-9_]+$")
+# Block textures the game colors by biome (as plains); the item icons use the same colors.
+TINTS = {"block/spruce_leaves": "#619961", "block/birch_leaves": "#80a755", "block/grass_block_top": "#7cbd6b",
+         "block/oak_leaves": "#48b518", "block/jungle_leaves": "#48b518", "block/acacia_leaves": "#48b518",
+         "block/dark_oak_leaves": "#48b518", "block/vine": "#48b518", "block/lily_pad": "#208030",
+         "block/grass": "#7cbd6b", "block/fern": "#7cbd6b"}
+
+
+def _texture_name(ref):
+    return ref.split(":", 1)[-1]
+
+
+def item_model(z, item_id):
+    """How to draw an item's inventory icon, from its model in the jar:
+    {"layers": [texture, ...]} for flat items, {"boxes": [[from, to], ...], "top", "front", "side",
+    "tint"} for blocks, {"entity": item id} for the few drawn by code (beds, chests), or None."""
+    textures, name, elements, parents = {}, f"item/{item_id}", None, []
+    for _ in range(10):  # follow the parents
+        try:
+            model = json.loads(z.read(f"assets/minecraft/models/{name}.json"))
+        except (KeyError, ValueError):
+            return None
+        for k, v in (model.get("textures") or {}).items():
+            textures.setdefault(k, v)
+        if elements is None and model.get("elements"):
+            elements = model["elements"]
+        parent = _texture_name(model.get("parent", ""))
+        if not parent:
+            break
+        parents.append(parent)
+        if parent in ("builtin/generated", "builtin/entity"):
+            break
+        name = parent
+
+    def resolve(key):
+        ref = textures.get(key)
+        for _ in range(10):
+            if not ref or not ref.startswith("#"):
+                break
+            ref = textures.get(ref[1:])
+        return _texture_name(ref) if ref else None
+
+    if "builtin/entity" in parents:
+        return {"entity": item_id}
+    if "builtin/generated" in parents:
+        layers = [resolve(f"layer{i}") for i in range(5)]
+        return {"layers": [t for t in layers if t]} if layers[0] else None
+    if not elements:
+        return None
+
+    def face(*sides):  # the first element's texture on one of these sides
+        for e in elements:
+            for f in sides:
+                ref = ((e.get("faces") or {}).get(f) or {}).get("texture")
+                if ref:
+                    return resolve(ref[1:]) if ref.startswith("#") else _texture_name(ref)
+        return None
+
+    top, front, side = face("up"), face("north", "south"), face("west", "east", "south")
+    if not (top and front and side):
+        return None
+    boxes = [[e["from"], e["to"]] for e in elements if "from" in e and "to" in e]
+    return {"boxes": boxes, "top": top, "front": front, "side": side,
+            "tint": TINTS.get(top) or TINTS.get(side)}

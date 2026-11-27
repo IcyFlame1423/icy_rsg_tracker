@@ -1,7 +1,7 @@
 // Dashboard page: headline numbers, split progression, split times, the latest runs.
 import * as fmt from "./fmt.js";
 import { showTooltip, hideTooltip } from "./charts.js";
-import { $, getJSON, h, latestOnly, plural, PROGRESSION, SPLITS, state, tile, windowQuery } from "./common.js";
+import { $, getJSON, h, latestOnly, plural, PROGRESSION, state, tile, windowQuery } from "./common.js";
 import { createRunsTable } from "./runs-table.js";
 import { icon, iconSlot } from "./icons.js";
 import { describeFilters, filterControls, matches, syncControls } from "./run-filters.js";
@@ -99,14 +99,17 @@ function withArt(tileNode, key) {
 function renderMeters(st) {
   const byRuns = local.progressionBase === "runs";
   $("progression-note").textContent = byRuns
-    ? "Share of all runs played that reached each split."
+    ? "Share of all runs played that reached each split. Bars are scaled to the nether, so they're easier to compare."
     : "Share of runs that reached the previous split (nether: of runs played).";
+  const nethers = st.splits.nether.count;
   $("meters").replaceChildren(...PROGRESSION.flatMap(([key, name], i) => {
     const s = st.splits[key];
     const prev = i === 0 || byRuns ? null : PROGRESSION[i - 1];
     const wholeCount = prev ? st.splits[prev[0]].count : st.runs_played;
     const whole = prev ? `${prev[1].toLowerCase()} runs` : "runs played";
     const rate = wholeCount ? s.count / wholeCount : null;
+    // Of runs played, the nether's share is small: it fills the bar and the rest are relative to it.
+    const fill = byRuns ? (nethers ? s.count / nethers : 0) : rate ?? 0;
     const tip = (x, y) => showTooltip(x, y, name, [
       { value: fmt.pct(rate), name: `of ${whole}` },
       { value: `${fmt.int(s.count)} of ${fmt.int(wholeCount)}`, name: "runs" },
@@ -118,7 +121,7 @@ function renderMeters(st) {
       "aria-valuenow": String(rate == null ? 0 : Math.min(100, Math.round(rate * 1000) / 10)),
       onpointermove: (e) => tip(e.clientX, e.clientY), onpointerleave: hideTooltip,
       onfocus: () => { const r = track.getBoundingClientRect(); tip(r.right, r.top); }, onblur: hideTooltip,
-    }, h("div", { class: "meter-fill", style: `width:${Math.min(1, rate ?? 0) * 100}%` }));  // never overflows
+    }, h("div", { class: "meter-fill", style: `width:${Math.min(1, fill) * 100}%` }));  // never overflows
     return [
       h("div", { class: "meter-name" }, iconSlot(key), name),
       track,
@@ -128,7 +131,7 @@ function renderMeters(st) {
 }
 
 function renderSplitTable(st) {
-  $("split-table").tBodies[0].replaceChildren(...SPLITS.map(([key, name]) => {
+  $("split-table").tBodies[0].replaceChildren(...PROGRESSION.map(([key, name]) => {
     const s = st.splits[key];
     const cls = "num" + (s.count ? "" : " muted");
     return h("tr", {}, h("td", {}, iconSlot(key), name),

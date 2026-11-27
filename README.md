@@ -13,9 +13,16 @@ can't affect your runs or make them unverifiable.
   completions, split progression, split times, and your latest runs.
 - **Runs:** every run with its splits, filterable by the split they reached, with any of the
   80 advancements as extra columns. **View** opens a run's own page.
-- **Run page:** each split against your average (all time or that session), segment times, an estimate
-  of key resources (blaze rods, pearls, beds, respawn anchors, fire resistance, obsidian),
-  deaths, and advancements in the order you got them.
+- **Run page:** each split against your average (all time or that session), segment times, key items
+  obtained (blaze rods, pearls, beds, respawn anchors, fire resistance, obsidian), the seed if you
+  typed `/seed`, a breakdown of each part of the run (structures looted, raw materials at nether
+  enter, distances travelled, blaze rate, blind accuracy, eyes placed in the portal,
+  beds used in the End), deaths, and advancements in the order you got them. Items, the seed and
+  the breakdown need the Hermes mod. Finished Hermes runs also get a **score**: the seconds lost against a
+  top player on the same seed (fitted on MCSR Ranked's top players, allowing for distances and
+  resource shortages), with a page showing how it's worked out. The score uses data from the
+  [MCSR Ranked](https://mcsrranked.com) API (top-player times), Couriway's 100K tracker (structureless
+  overworld) and T_Wagz's End fight time analysis (End fights with 2 explosives or fewer).
 - **Sessions:** trends across sessions (nethers per hour, runs, resets per nether, average split
   times), and each session's timeline.
 - **Splits:** one split in depth: distribution, over time, top 10, from the start of the run or from
@@ -80,9 +87,11 @@ offline too.
   real time across the session.
 - **Deaths:** with a respawn point (bed or anchor: a death reset) or without (back to world spawn),
   from the game log.
-- **Resources** (run page) come from the game's item statistics: picked up minus dropped. Deaths make
-  these estimates, because picking your items back up counts them again; the run page's **Learn more**
-  explains the assumptions.
+- **Items and seed** (run page) need the [Hermes](https://github.com/DuncanRuns/Hermes) mod, which
+  saves a play log in each world when you leave it. Items are counted from your inventory as it
+  changed: items picked back up after a death or a drop, put in a chest and taken out again, or
+  placed and broken again aren't counted twice. Blaze rods only count from blazes. Runs played
+  without Hermes have no item counts. The tracker never reads the ciphered live copy of the log.
 - A run where the world was opened to LAN with cheats keeps only what happened before cheats were turned
   on. Runs with cheats on from the start are ignored.
 
