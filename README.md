@@ -44,14 +44,18 @@ Split icons are drawn from your own copy of Minecraft (nothing of Mojang's is in
 
 ## Install
 
-1. Download `icy_rsg_tracker.exe` from the [Releases](../../releases) page.
-2. Put it in a folder of its own (it keeps its settings and data next to itself).
-3. Double-click it. It opens the dashboard in your browser at http://127.0.0.1:8765/.
+1. Download `icy_rsg_tracker.zip` from the [Releases](../../releases) page.
+2. Unzip it into a folder of its own (it keeps its settings and data there): you get
+   `icy_rsg_tracker.exe` and an `_internal` folder it needs.
+3. Double-click `icy_rsg_tracker.exe`. It opens the dashboard in your browser at http://127.0.0.1:8765/.
    Windows may warn that the app is unrecognized, because it isn't signed. Click **More info**, then
    **Run anyway**.
 4. It runs in the background, without a window of its own. Keep the dashboard tab open while you
    play. To stop tracking, press **Stop tracking** at the top of the dashboard, or close the tab.
    Opening the exe again while it's running just opens the dashboard.
+
+To update, close the tracker and unzip the new version into the same folder, replacing the old
+files. Your settings (`config.toml`) and runs (`data\`) aren't in the zip, so they're kept.
 
 On the first start it finds your RSG instance (one with Atum installed) and imports every run
 SpeedRunIGT has recorded. If it can't find the instance, the status bar says so: open **Settings**,
@@ -127,7 +131,9 @@ what it prints goes to `tracker.log` next to it (the same happens with `track.ba
 ## Building the .exe
 
 Run `build.bat` (needs Python 3.11+). It installs PyInstaller into its own `.build-venv` folder and
-writes `dist\icy_rsg_tracker.exe`.
+writes `dist\icy_rsg_tracker\` (the exe and its `_internal` folder) and `dist\icy_rsg_tracker.zip`
+(the same, for a release). It's a folder build with version details rather than one
+self-extracting .exe, which antivirus is far less likely to mistake for malware.
 
 ## License
 
