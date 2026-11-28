@@ -36,14 +36,13 @@ class ParseTest(unittest.TestCase):
         bad = valid(session_gap_minutes=0, watch_interval_seconds="x", speedrunigt_dir=" ",
                     instances=[{"name": "../escape", "world_name_pattern": "("},
                                {"name": "ok", "world_name_pattern": "x", "minecraft_dir": "Z:/nope/nope"},
-                               {"name": "OK", "world_name_pattern": ""}])
+                               {"name": "OK", "world_name_pattern": ""}])  # empty is fine: every world
         with self.assertRaises(settings.SettingsError) as ctx:
             settings.parse(bad)
         e = ctx.exception.errors
         self.assertEqual(set(e), {"session_gap_minutes", "watch_interval_seconds", "speedrunigt_dir",
                                   "instances.0.name", "instances.0.world_name_pattern",
-                                  "instances.1.minecraft_dir", "instances.2.name",
-                                  "instances.2.world_name_pattern"})
+                                  "instances.1.minecraft_dir", "instances.2.name"})
         self.assertIn("already has this name", e["instances.2.name"])
 
     def test_needs_an_instance(self):
@@ -81,7 +80,7 @@ class DetectTest(unittest.TestCase):
             found = {f["name"]: f for f in settings.detect_instances([launcher]) if f["launcher"] == str(launcher)}
             self.assertEqual(set(found), {"rsg", "other"})
             self.assertTrue(found["rsg"]["rsg"])
-            self.assertEqual(found["rsg"]["world_name_pattern"], settings.RSG_PATTERN)
+            self.assertEqual(found["rsg"]["world_name_pattern"], "")  # no pattern: every world
             self.assertFalse(found["other"]["rsg"])
             self.assertTrue(found["other"]["minecraft_dir"].endswith(".minecraft"))
 

@@ -5,13 +5,22 @@ import { countedIcon, iconSlot, itemIcon, withIcon } from "./icons.js";
 import { $, getJSON, h, latestOnly, PROGRESSION, state, tile } from "./common.js";
 import { hideTooltip, showTooltip } from "./charts.js";
 import { signedSeconds } from "./score.js";
+import { rankSentence, rankWithCutoffs } from "./ranks.js";
+import { seedTypeIcon, seedTypeLabel } from "./seedtypes.js";
 
 const SPLIT_LABEL = Object.fromEntries(PROGRESSION);
 const STRUCTURE_NAME = { bastion: "Bastion", fortress: "Fortress" };
 // The diverging bar in "vs average" is full width at this fraction of the average.
 const BAR_FULL = 0.25;
 
-let compare = localStorage.getItem("runCompare") === "session" ? "session" : "all";
+// What the splits are compared with: the run's session, or a time window (ending now).
+const COMPARE = {
+  session: "the {n} runs in session #{session}, including this one",
+  today: "the {n} runs played today", "7d": "the {n} runs played in the last 7 days",
+  "30d": "the {n} runs played in the last 30 days", "1y": "the {n} runs played in the last year",
+  all: "all {n} runs you've played",
+};
+let compare = COMPARE[localStorage.getItem("runCompare")] ? localStorage.getItem("runCompare") : "all";
 let detail = null;
 const fetchRun = latestOnly((id) =>
   getJSON(`/api/run?${new URLSearchParams({ instance: state.instance, run_id: id })}`));
@@ -108,6 +117,8 @@ function draw() {
   $("run-seed").replaceChildren("Seed: ", ...(run.seed
     ? [h("code", {}, run.seed), copyButton(run.seed, "Copy seed")]
     : ["/seed was not run in the world"]));
+  const seedType = seedTypeLabel(run.seed_type);
+  $("run-seed-type").replaceChildren(...(seedType ? ["Seed type: ", seedType] : []));
   $("run-sub").replaceChildren(
     fmt.dateTime(run.date), " · ",
     h("a", { href: `#sessions/${session.id}` }, `Session #${session.id}`),
@@ -124,27 +135,26 @@ function draw() {
   }
   $("run-steps").replaceChildren(...steps);
 
-  const cheats = $("run-cheats");
-  cheats.hidden = run.cheats_from_rta == null;
-  cheats.textContent = run.cheats_from_rta == null ? "" :
-    `Opened to LAN with cheats at ${fmt.time(run.cheats_from_rta)} real time. Splits and advancements after that aren't counted.`;
-
   const furthest = [...PROGRESSION].reverse().find(([k]) => times[k] != null);
-  const reached = PROGRESSION.filter(([k]) => times[k] != null).length;
   $("run-tiles").replaceChildren(
-    tile("Result", run.result === "finished" ? "Finished" : "Reset",
-      run.result === "finished" ? "beat the game" : `at ${fmt.time(run.final_igt)}`),
-    tile("In-game time", fmt.time(run.final_igt), run.result === "finished" ? "final time" : "when it was reset"),
-    tile("Real time", fmt.time(run.final_rta), run.final_rta != null && run.final_igt != null
-      ? `${fmt.timeTenths(Math.max(0, run.final_rta - run.final_igt))} more than in-game` : ""),
-    tile("Furthest split", furthest ? withIcon(iconKey(furthest[0]), splitLabel(furthest[0])) : "None",
-      `${reached} of ${PROGRESSION.length} splits`),
+    tile("Result", run.result === "finished" ? "Finished" : "Reset"),
+    tile("IGT", fmt.time(run.final_igt)),
+    tile("RTA", fmt.time(run.final_rta)),
+    tile("Furthest split", furthest ? withIcon(iconKey(furthest[0]), splitLabel(furthest[0])) : "None"),
     scoreTile(),
+    rankTile(),
   );
   drawResources(run);
   drawPhases();
   drawDeaths(run);
   drawTables();
+}
+
+/** Which MCSR Ranked tier the run was as good as (scored runs only). */
+function rankTile() {
+  return detail.score
+    ? tile("Rank", rankWithCutoffs(detail.score, "rank-icon-tile"), rankSentence(detail.score.rank))
+    : tile("Rank", "–", "not scored");
 }
 
 /** The run's score against a top player (finished Hermes runs only), linking to how it's worked out. */
@@ -196,11 +206,9 @@ function drawResources(run) {
   const items = detail.items;
   const note = $("run-resources-note");
   if (!items) {
-    // Counted from the Hermes mod's play log, which older runs don't have.
+    // Counted from the Hermes mod's play log.
     $("run-resources").replaceChildren();
-    note.textContent = "Item counts aren't available for this run: they come from the Hermes mod's play log, " +
-      "and this run doesn't have one (it was played before Hermes was installed, or its world was deleted " +
-      "before the tracker read it).";
+    note.textContent = HERMES_LOADING;
     return;
   }
   $("run-resources").replaceChildren(...ITEMS.map((key) => {
@@ -216,7 +224,7 @@ function drawResources(run) {
     }, art, state.textures ? null : h("span", { class: "resource-name", "aria-hidden": "true" }, name));
     return el;
   }));
-  note.textContent = run.cheats_from_rta != null ? "Only counts what was obtained before the world was opened to LAN." : "";
+  note.textContent = "";
 }
 
 // ---- Overworld, nether, stronghold, End (from the Hermes play log and ghost) ----------------
@@ -288,6 +296,11 @@ const section = (title, ...body) => [h("h3", {}, title), ...body.filter((x) => x
 const tiles = (...list) => h("div", { class: "tiles" }, list);
 const nothing = (text) => h("p", { class: "sub" }, text);
 
+// A run without Hermes data yet: Hermes saves it when the world closes, and the tracker picks it
+// up within a few seconds of that.
+const HERMES_LOADING = "This run's Hermes data hasn't loaded yet. It can take a little while after a run ends, " +
+  "and shows up here by itself. If it never does, the world may have been deleted before the tracker read it.";
+
 function drawPhases() {
   const phases = detail.phases;
   const cards = ["overworld", "nether", "stronghold", "end"];
@@ -295,7 +308,7 @@ function drawPhases() {
   if (!phases) {
     const why = detail.items
       ? "Not filled in yet for this run: use Settings → Rebuild from records."
-      : "Not available for this run: this comes from the Hermes mod's play log, which this run doesn't have.";
+      : HERMES_LOADING;
     for (const k of cards) {
       $(`run-${k}`).replaceChildren();
       $(`run-${k}-note`).textContent = why;
@@ -304,7 +317,6 @@ function drawPhases() {
   }
   const notes = [];
   if (!phases.distances) notes.push("Distances need the Hermes ghost file, which this run doesn't have.");
-  if (detail.run.cheats_from_rta != null) notes.push("Only counts what happened before the world was opened to LAN.");
   drawOverworld(phases.overworld);
   drawNether(phases.nether);
   drawStronghold(phases.stronghold);
@@ -318,7 +330,8 @@ function drawOverworld(ow) {
   const visited = [...new Set(ow.structures.filter((s) => !s.looted).map((s) => structureName(s.structure)))];
   const body = section("Structures looted",
     looted.length
-      ? h("ul", { class: "chips" }, looted.map((s) => h("li", { class: "chip" }, structureName(s.structure))))
+      ? h("ul", { class: "chips" }, looted.map((s) => h("li", { class: "chip" },
+        seedTypeIcon(s.structure), structureName(s.structure))))  // an icon only for the seed types
       : nothing("None (no chest opened in a structure before the nether)."),
     visited.length ? h("p", { class: "sub" }, `Also went into (no chest opened): ${visited.join(", ")}.`) : null);
   if (!ow.materials) {
@@ -362,8 +375,10 @@ function drawNether(ne) {
         ne.blind.nether_distance ? `${blocks(ne.blind.nether_distance * 8)} in the overworld` : "the same portal")
       : tile("Blind to stronghold portal", "–"), "obsidian"),
   );
-  $("run-nether").replaceChildren(ne.fortress_slots
-    ? split(section("Inventory at fortress enter", inventory(ne.fortress_slots)), stats)
+  const inv = ne.inventory;
+  $("run-nether").replaceChildren(inv
+    ? split(section(inv.at === "bastion_exit" ? "Inventory at bastion exit" : "Inventory at fortress enter",
+      inventory(inv.slots)), stats)
     : stats);
 }
 
@@ -414,8 +429,7 @@ function drawDeaths(run) {
   const count = (n) => (run.deaths === 0 ? "0" : known ? fmt.int(n) : "–");
   $("run-deaths").replaceChildren(
     tile("Deaths", fmt.int(run.deaths)),
-    tile("With spawn point", count(run.deaths_with_respawn), "respawned at a bed or anchor"),
-    tile("Accidental", count(run.deaths_without_respawn), "sent back to world spawn"),
+    tile("With spawn point", count(run.deaths_with_respawn)),
   );
   $("run-deaths-note").textContent = run.deaths && !known
     ? "The game log didn't match the death count, so these deaths couldn't be told apart." : "";
@@ -449,11 +463,10 @@ function vsCell(ms, avg) {
 function drawTables() {
   const base = detail.compare[compare];
   const times = detail.times;
-  $("run-compare-note").textContent = compare === "all"
-    ? `Compared with all ${fmt.int(base.runs)} runs you've played.`
-    : `Compared with the ${fmt.int(base.runs)} runs in session #${detail.session.id}, including this one.`;
+  $("run-compare-note").textContent = `Compared with ${COMPARE[compare]
+    .replace("{n}", fmt.int(base.runs)).replace("{session}", detail.session.id)}.`;
 
-  const head = ["Split", "Time", "Segment", "Average", "vs average", "Segment average"];
+  const head = ["Split", "IGT", "Segment", "Average", "vs average", "Segment average"];
   const rows = PROGRESSION.map(([key], i) => {
     const t = times[key], s = base.splits[key];
     const prev = i ? times[PROGRESSION[i - 1][0]] : null;
@@ -479,14 +492,13 @@ function drawTables() {
 function drawAdvancements(base) {
   const { run, advancement_names: names } = detail;
   const earned = Object.entries(run.advancements).sort((a, b) => a[1] - b[1]);
-  $("run-adv-note").textContent = earned.length
-    ? `${earned.length} earned this run, in the order you got them.`
-    : "No advancements this run.";
+  $("run-adv-note").textContent = earned.length ? "" : "No advancements this run.";
+  $("run-adv-note").hidden = !!earned.length;
   $("run-advancements").hidden = !earned.length;
   if (!earned.length) return;
-  const runsWord = compare === "all" ? "Runs with it" : "Runs with it (session)";
+  const runsWord = "Runs with it";
   $("run-advancements").replaceChildren(
-    h("thead", {}, h("tr", {}, ["Advancement", "Time", "Average", "vs average", "Best", runsWord]
+    h("thead", {}, h("tr", {}, ["Advancement", "IGT", "Average", "vs average", "Best", runsWord]
       .map((text, i) => h("th", { scope: "col", class: i ? "num" : "" }, text)))),
     h("tbody", {}, earned.map(([id, ms]) => {
       const a = base.advancements[id];

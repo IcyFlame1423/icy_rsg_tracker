@@ -91,6 +91,7 @@ class Tracker:
         self.lock = threading.RLock()  # one import (or settings change) at a time
         self._snap = None
         self._retry = False
+        self._awaiting_play_log = 0  # recent runs whose play log hasn't turned up yet
         self._started = False
 
     @property
@@ -125,6 +126,7 @@ class Tracker:
             self.out(str(e))
             return
         self._started = True
+        self._awaiting_play_log = result.awaiting_play_log
         self.warning = None
         self.version += 1
         self.last_import = datetime.now()
@@ -141,7 +143,7 @@ class Tracker:
         if self._records_missing():
             return
         new_snap = snapshot(self.cfg.records_dir)
-        if new_snap == self._snap and not self._retry:
+        if new_snap == self._snap and not self._retry and not self._awaiting_play_log:
             return
         try:
             result = self._import(write_unchanged=False)
@@ -155,6 +157,9 @@ class Tracker:
         # written during the import is still picked up next time.
         self._snap = new_snap
         self._retry = bool(result.unreadable)
+        # Hermes writes a world's play log as the world closes, which can be just after the
+        # record: keep checking for it, even with no new records, while a recent run lacks one.
+        self._awaiting_play_log = result.awaiting_play_log
         self.warning = None
         if any(r.changed_ids for r in result.instances.values()):
             self.version += 1

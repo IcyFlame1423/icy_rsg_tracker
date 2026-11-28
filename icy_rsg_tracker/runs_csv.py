@@ -46,6 +46,7 @@ BASE_COLUMNS = [
     # ignoring height), times as m:ss.mmm.
     *PHASE_COLUMNS,       # spawn_to_structures, ..., and the performance model's inputs (bucket_1-9, ...)
     "phases",             # JSON: the overworld, nether and stronghold sections (see phases.py)
+    "play_log_key",       # the play log these came from (hermes.play_log_key): unchanged, it isn't read again
     "score",              # seconds lost against a top player on the same seed (model.py); finished runs only
 ]
 COLUMNS = BASE_COLUMNS + ADVANCEMENTS

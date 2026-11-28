@@ -423,7 +423,7 @@ export function columnChart(container, bins, opts) {
   const table = document.createElement("table");
   table.className = "data-table";
   const head = table.createTHead().insertRow();
-  for (const [text, cls] of [["Time", ""], ["Runs", "num"]]) {
+  for (const [text, cls] of [["IGT", ""], ["Runs", "num"]]) {
     const th = document.createElement("th"); th.textContent = text; th.className = cls; head.appendChild(th);
   }
   const body = table.createTBody();

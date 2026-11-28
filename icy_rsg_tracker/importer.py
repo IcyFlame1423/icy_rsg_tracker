@@ -22,12 +22,13 @@ from .records import load_record, read_record_json
 OTHER_INSTANCE = "from other instances"
 SET_SEED = "set seed"
 CHEATS_AT_START = "cheats on from world creation"
+NOT_SURVIVAL = "not created as a survival world"
 
 # Hermes writes a world's play log as the world closes, which can be just after SpeedRunIGT
 # writes the record: runs this recent without one have their play log looked for again.
 PLAY_LOG_RECHECK = timedelta(seconds=60)
 # What runs.csv keeps from a play log, so it isn't lost when the world is deleted.
-PLAY_LOG_COLUMNS = ("seed", *hermes.ITEMS, *hermes.DETAILS, *phases.COLUMNS, "phases")
+PLAY_LOG_COLUMNS = ("seed", *hermes.ITEMS, *hermes.DETAILS, *phases.COLUMNS, "phases", "play_log_key")
 
 
 @dataclass
@@ -44,6 +45,9 @@ class ImportResult:
     instances: dict = field(default_factory=dict)  # instance name -> InstanceResult
     ignored: dict = field(default_factory=dict)    # reason -> count of records
     unreadable: list = field(default_factory=list)
+    # Runs that just ended whose play log hasn't turned up yet: the watcher keeps importing
+    # (every few seconds, for up to PLAY_LOG_RECHECK) until it does.
+    awaiting_play_log: int = 0
 
 
 class _InstanceState:
@@ -98,6 +102,8 @@ def import_records(cfg, rebuild=False, ignored=None, write_unchanged=True):
             reason = SET_SEED
         elif run.cheats_at_start:
             reason = CHEATS_AT_START
+        elif not run.survival:
+            reason = NOT_SURVIVAL
         if reason:
             ignored[run_id] = (mtime, reason)
             if owner:
@@ -125,15 +131,24 @@ def import_records(cfg, rebuild=False, ignored=None, write_unchanged=True):
                 death_times = None
             if death_times is not None:  # the log's deaths match the record's, one for one
                 death_resets = [d.respawn for d in world.deaths]
-        row = runs_csv.run_to_row(run, death_counts, death_times, death_resets,
-                                  hermes.read_play_log(instance.minecraft_dir, run.world_name))
         old = state.previous.get(run_id)
-        if old and not _has_play_log(row) and _has_play_log(old):  # the world is gone now
+        key = hermes.play_log_key(instance.minecraft_dir, run.world_name)
+        if key and old and old["play_log_key"] == key:
+            # The same play log as last time, read by the same version: keep what came from it
+            # without opening it (this is most of a rebuild's time).
+            row = runs_csv.run_to_row(run, death_counts, death_times, death_resets)
             row.update({c: old[c] for c in PLAY_LOG_COLUMNS})
+        else:
+            play_log = hermes.read_play_log(instance.minecraft_dir, run.world_name) if key else None
+            row = runs_csv.run_to_row(run, death_counts, death_times, death_resets, play_log)
+            if play_log:
+                row["play_log_key"] = key or ""
+            elif old and _has_play_log(old):  # the world is gone now
+                row.update({c: old[c] for c in PLAY_LOG_COLUMNS})
         state.by_id[run_id] = row
 
     for instance in cfg.instances:
-        _recheck_play_logs(instance, states[instance.name])
+        result.awaiting_play_log += _recheck_play_logs(instance, states[instance.name])
 
     for name, state in states.items():
         rows = list(state.by_id.values())
@@ -156,14 +171,20 @@ def _has_play_log(row):
 
 def _recheck_play_logs(instance, state, now=None):
     """Fill in what comes from the play log for runs that ended in the last PLAY_LOG_RECHECK,
-    if their play log has appeared since they were imported."""
+    if their play log has appeared since they were imported. Returns how many of those runs
+    still have none."""
     if not instance.minecraft_dir:
-        return
+        return 0
     since = runs_csv.format_date((now or datetime.now()) - PLAY_LOG_RECHECK)
+    waiting = 0
     for run_id, row in state.by_id.items():
         if _has_play_log(row) or row["date"] < since:
             continue
         if log := hermes.read_play_log(instance.minecraft_dir, row["world_name"]):
             row.update(runs_csv.play_log_columns(log))
+            row["play_log_key"] = hermes.play_log_key(instance.minecraft_dir, row["world_name"]) or ""
             state.result.updated += 1
             state.result.changed_ids.append(run_id)
+        else:
+            waiting += 1
+    return waiting

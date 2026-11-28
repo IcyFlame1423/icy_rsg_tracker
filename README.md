@@ -11,16 +11,20 @@ can't affect your runs or make them unverifiable.
 
 - **Dashboard:** nethers per hour, runs played, total resets (including wall resets), average nether,
   completions, split progression, split times, and your latest runs.
-- **Runs:** every run with its splits, filterable by the split they reached, with any of the
-  80 advancements as extra columns. **View** opens a run's own page.
+- **Runs:** every run with its splits, seed type and score, filterable by the split they reached,
+  with any of the 80 advancements as extra columns. **View** opens a run's own page.
 - **Run page:** each split against your average (all time or that session), segment times, key items
   obtained (blaze rods, pearls, beds, respawn anchors, fire resistance, obsidian), the seed if you
-  typed `/seed`, a breakdown of each part of the run (structures looted, raw materials at nether
+  typed `/seed`, the seed type (the overworld structure looted; a ruined portal only when it's the
+  only one), a breakdown of each part of the run (structures looted, raw materials at nether
   enter, distances travelled, blaze rate, blind accuracy, eyes placed in the portal,
   beds used in the End), deaths, and advancements in the order you got them. Items, the seed and
-  the breakdown need the Hermes mod. Finished Hermes runs also get a **score**: the seconds lost against a
+  the breakdown come from Hermes, and can take a few seconds to show up after a run ends (Hermes
+  saves them as the world closes). Finished runs also get a **score**: the seconds lost against a
   top player on the same seed (fitted on MCSR Ranked's top players, allowing for distances and
-  resource shortages), with a page showing how it's worked out. The score uses data from the
+  resource shortages), with a page showing how it's worked out, and a **rank**: the MCSR Ranked
+  tier (Iron I to Netherite, or Top 30 level) whose typical run it matches, overall and for each part
+  of the run. The score uses data from the
   [MCSR Ranked](https://mcsrranked.com) API (top-player times), Couriway's 100K tracker (structureless
   overworld) and T_Wagz's End fight time analysis (End fights with 2 explosives or fewer).
 - **Sessions:** trends across sessions (nethers per hour, runs, resets per nether, average split
@@ -34,9 +38,11 @@ Split icons are drawn from your own copy of Minecraft (nothing of Mojang's is in
 ## Requirements
 
 - Windows.
-- Minecraft 1.16.1 with **SpeedRunIGT**, **Atum**, and **Hermes** (RSG worlds named `Random Speedrun #N`).
-  **SeedQueue** works and is what wall resets are counted from; without it, you just get no wall
-  resets.
+- Minecraft 1.16.1 with **SpeedRunIGT**, **Atum** (RSG worlds named `Random Speedrun #N`) and
+  **[Hermes](https://github.com/DuncanRuns/Hermes)**. Hermes saves a play log in each world, which the
+  item counts, the run breakdown, seed types and scores come from; the status bar warns if the
+  instance doesn't have it. **SeedQueue** works and is what wall resets are counted from; without
+  it, you just get no wall resets.
 - One instance at a time. Multi-instance walls (several instances playing at once) aren't supported yet:
   every instance names its worlds the same way, so their runs can't be told apart.
 - Prism Launcher or MultiMC are found automatically. Other launchers work too: set the instance's
@@ -97,7 +103,10 @@ offline too.
   placed and broken again aren't counted twice. Blaze rods only count from blazes. Runs played
   without Hermes have no item counts. The tracker never reads the ciphered live copy of the log.
 - A run where the world was opened to LAN with cheats keeps only what happened before cheats were turned
-  on. Runs with cheats on from the start are ignored.
+  on. Only survival worlds are tracked: runs with cheats on from the start, and creative, adventure,
+  spectator or hardcore worlds, are ignored. By default every such world is tracked, whatever its
+  name; an instance's world name pattern (Settings) can narrow that down, e.g. to
+  `^Random Speedrun #\d+$` for Atum's worlds only.
 
 ## Output
 
@@ -121,7 +130,8 @@ python -m icy_rsg_tracker                   # dashboard + tracking (same as `app
 python -m icy_rsg_tracker app --no-browser  # options: --port N, --no-tracker (view only)
 python -m icy_rsg_tracker watch             # tracking only, console output
 python -m icy_rsg_tracker import            # one-off update
-python -m icy_rsg_tracker import --rebuild  # rebuild from the records folder (old file kept as runs.csv.bak)
+python -m icy_rsg_tracker import --rebuild  # rebuild from the records folder (old file kept as runs.csv.bak;
+                                            # Hermes play logs that haven't changed aren't read again)
 python -m unittest discover -s tests -t .
 ```
 

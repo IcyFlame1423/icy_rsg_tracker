@@ -19,15 +19,16 @@ PRISM_INSTANCES = Path(os.environ.get("APPDATA", Path.home())) / "PrismLauncher"
 @dataclass
 class Instance:
     """A Minecraft instance. Every instance writes to the same SpeedRunIGT records
-    folder, so records are matched to an instance by world name."""
+    folder, so records are matched to an instance by world name. Without a pattern the
+    instance takes every world (that no instance with a pattern matches)."""
     name: str
-    world_name_pattern: re.Pattern
+    world_name_pattern: re.Pattern | None
     # The instance's .minecraft folder; its logs/ are used to classify deaths.
     # None -> death respawn columns are left blank.
     minecraft_dir: Path | None = None
 
     def owns(self, world_name):
-        return bool(self.world_name_pattern.search(world_name))
+        return self.world_name_pattern is None or bool(self.world_name_pattern.search(world_name))
 
     @property
     def logs_dir(self):
@@ -40,9 +41,14 @@ def _default_minecraft_dir(name):
 
 
 def default_instances():
-    # Atum names RSG worlds "Random Speedrun #N".
-    return [Instance("speedrun", re.compile(r"^Random Speedrun #\d+$"),
-                     _default_minecraft_dir("speedrun"))]
+    # No world name pattern: every world is tracked (survival, no cheats; see importer.py).
+    return [Instance("speedrun", None, _default_minecraft_dir("speedrun"))]
+
+
+def compile_pattern(text):
+    """A world name pattern from settings: None when empty (every world)."""
+    text = (text or "").strip()
+    return re.compile(text) if text else None
 
 
 @dataclass
@@ -66,11 +72,11 @@ class Config:
         return self.instance_dir(instance) / "runs.csv"
 
     def instance_for(self, world_name):
-        """The first instance whose pattern matches, or None."""
+        """The first instance whose pattern matches; else the first without a pattern; or None."""
         for instance in self.instances:
-            if instance.owns(world_name):
+            if instance.world_name_pattern is not None and instance.owns(world_name):
                 return instance
-        return None
+        return next((i for i in self.instances if i.world_name_pattern is None), None)
 
 
 def _detected_instance():
@@ -83,7 +89,7 @@ def _detected_instance():
     saves = lambda d: (Path(d["minecraft_dir"]) / "saves").stat().st_mtime if (Path(d["minecraft_dir"]) / "saves").is_dir() else 0
     best = max(rsg, key=saves)
     name = re.sub(r"[^A-Za-z0-9 _.\-]", "", best["name"]).strip()[:40] or "speedrun"
-    return Instance(name, re.compile(best["world_name_pattern"]), Path(best["minecraft_dir"]))
+    return Instance(name, compile_pattern(best["world_name_pattern"]), Path(best["minecraft_dir"]))
 
 
 def load_config(path=DEFAULT_CONFIG_PATH):
@@ -110,7 +116,7 @@ def load_config(path=DEFAULT_CONFIG_PATH):
         cfg.instances = [
             Instance(
                 name,
-                re.compile(settings["world_name_pattern"]),
+                compile_pattern(settings.get("world_name_pattern")),
                 Path(settings["minecraft_dir"]).expanduser() if "minecraft_dir" in settings
                 else _default_minecraft_dir(name),
             )

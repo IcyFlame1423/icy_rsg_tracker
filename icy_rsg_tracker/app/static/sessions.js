@@ -144,7 +144,7 @@ async function loadStats() {
   if (!s) return;
   allSessions = s.sessions;
   $("stats-period-note").textContent =
-    `${plural(allSessions.length, "session")} in ${PERIODS[period]}, oldest to newest.`;
+    `${plural(allSessions.length, "session")} in ${PERIODS[period]}.`;
   drawStats();
   drawTrends();
 }
@@ -165,14 +165,14 @@ async function loadDetail(id) {
   const s = summary.sessions[0];
   $("session-title").textContent = `Session ${id}`;
   $("session-sub").textContent = `${fmt.day(s.start)} · ${timeRange(s)} · ${fmt.duration(st.time_span_s)}`;
-  const nether = st.splits.nether, finish = st.splits.finish;
+  const nether = st.splits.nether;
   $("session-tiles").replaceChildren(
     tile("Runs played", fmt.int(st.runs_played), `${fmt.int(st.wall_resets)} wall resets`),
     tile("Nethers", fmt.int(nether.count), st.nethers_per_hour == null ? "" : `${fmt.num(st.nethers_per_hour, 2)} per hour`),
-    tile("Average nether", fmt.timeTenths(nether.avg_ms), nether.best_ms == null ? "" : `best ${fmt.time(nether.best_ms)}`),
+    tile("Average nether", fmt.timeTenths(nether.avg_ms)),
     tile("Resets per nether", fmt.num(st.resets_per_nether, 1)),
     tile("Time played", fmt.duration(st.time_span_s), `${fmt.duration(st.playtime_s)} in worlds`),
-    tile("Completions", fmt.int(st.finished), finish.best_ms == null ? "" : `best ${fmt.time(finish.best_ms)}`),
+    tile("Completions", fmt.int(st.finished)),
   );
   drawTimeline(runs.runs);
   runsTable.render(runs.runs, runs.pbs, runs.advancements);
@@ -187,11 +187,12 @@ function drawTimeline(runs) {
       x: new Date(r.date).getTime(),
       y: r.final_igt ?? 0,
       emphasis: splitTime(r, timelineSplit) != null,
+      href: `#run/${encodeURIComponent(r.run_id)}`,
       title: `${r.world_number == null ? r.world_name : `#${r.world_number}`} · ${fmt.clock(r.date)}`,
       rows: [{ value: fmt.time(r.final_igt), name: r.result === "finished" ? "finished" : "reset at" }, ...reached],
     };
   }), {
-    name: "Runs in this session: time of day against in-game time when the run ended",
+    name: "Runs in this session: time of day against IGT when the run ended",
     yTickFormat: fmt.timeShort,
     legend: [{ label: `Reached ${(PROGRESSION.find(([k]) => k === timelineSplit)[1]).toLowerCase()}`, key: "emphasis" },
              { label: "Other runs", key: "muted" }],

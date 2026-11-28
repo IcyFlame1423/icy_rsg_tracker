@@ -59,7 +59,7 @@
         </section>
         <section class="card">
           <div class="card-head">
-            <h2>Average split time <span class="sub">by session</span></h2>
+            <h2>Average split IGT <span class="sub">by session</span></h2>
             <div class="card-controls">
               <div class="segmented small" id="trend-mode" role="group" aria-label="Split times measured">
                 <button type="button" data-mode="total">From beginning</button>
@@ -122,10 +122,9 @@
             </div>
             <p class="sub" id="progression-note"></p>
             <div class="meters" id="meters"></div>
-            <p class="sub footnote">Structure 1 and 2: the first and second of bastion/fortress entered, in either order.</p>
           </section>
           <section class="card">
-            <h2>Split times <span class="sub">(in-game)</span></h2>
+            <h2>Split times <span class="sub">(IGT)</span></h2>
             <table class="data-table" id="split-table">
               <thead><tr><th scope="col">Split</th><th scope="col" class="num">Reached</th><th scope="col" class="num">Average</th><th scope="col" class="num">Median</th><th scope="col" class="num">Best</th></tr></thead>
               <tbody></tbody>
@@ -172,7 +171,7 @@
                 <select id="timeline-split"></select>
               </label>
             </div>
-            <p class="sub">Each run: time of day against the in-game time when it ended. Runs that reached the chosen split are highlighted.</p>
+            <p class="sub">Each run: time of day against the IGT when it ended. Runs that reached the chosen split are highlighted. Click a dot to view the run.</p>
             <div class="chart" id="session-timeline"></div>
           </section>
           <section class="card spaced">
@@ -200,21 +199,24 @@
       </div>
       <h1 id="run-title" class="page-title"></h1>
       <p class="sub run-seed" id="run-seed"></p>
+      <p class="sub run-seed-type" id="run-seed-type"></p>
       <p class="sub" id="run-sub"></p>
       <div id="run-body">
-        <p class="notice" id="run-cheats" hidden></p>
-        <div class="tiles five" id="run-tiles"></div>
+        <div class="tiles six" id="run-tiles"></div>
         <section class="card spaced">
           <div class="card-head">
             <h2>Splits</h2>
             <div class="segmented small" id="run-compare" role="group" aria-label="Compare with">
-              <button type="button" data-compare="all">All runs</button>
               <button type="button" data-compare="session">This session</button>
+              <button type="button" data-compare="today">Today</button>
+              <button type="button" data-compare="7d">7 days</button>
+              <button type="button" data-compare="30d">30 days</button>
+              <button type="button" data-compare="1y">1 year</button>
+              <button type="button" data-compare="all">All time</button>
             </div>
           </div>
           <p class="sub" id="run-compare-note"></p>
           <div class="table-scroll"><table class="data-table" id="run-splits"></table></div>
-          <p class="sub footnote">Segment: time since the previous split. vs average: green is faster than your average, red slower.</p>
         </section>
         <section class="card spaced resources-card" id="run-resources-card" aria-label="Items obtained">
           <div class="resources" id="run-resources"></div>
@@ -284,7 +286,7 @@
           <section class="card">
             <h2>Top 10</h2>
             <table class="data-table" id="splits-top">
-              <thead><tr><th scope="col"><span class="sr-only">Open run</span></th><th scope="col" class="num">#</th><th scope="col" class="num">Time</th><th scope="col">Date</th><th scope="col" class="num">Session</th><th scope="col" class="num">World</th></tr></thead>
+              <thead><tr><th scope="col"><span class="sr-only">Open run</span></th><th scope="col" class="num">#</th><th scope="col" class="num">IGT</th><th scope="col">Date</th><th scope="col" class="num">Session</th><th scope="col" class="num">World</th></tr></thead>
               <tbody></tbody>
             </table>
           </section>

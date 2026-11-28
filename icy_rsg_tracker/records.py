@@ -36,6 +36,8 @@ class Run:
     cheats_from_rta: int | None = None
     # Cheats were on from the start (world created with cheats); the run isn't legit.
     cheats_at_start: bool = False
+    # Created as a survival world (not creative, spectator, adventure or hardcore).
+    survival: bool = True
     deaths: int = 0  # from the record's stats (includes any after cheats were turned on)
     splits: dict = field(default_factory=dict)        # split column -> igt ms
     advancements: dict = field(default_factory=dict)  # "story/iron_tools" -> igt ms
@@ -91,6 +93,7 @@ def parse_record(data, run_id):
         final_rta=data.get("final_rta", 0),
         cheats_from_rta=cheats_from_rta,
         cheats_at_start=cheats and open_lan is None,
+        survival=data.get("default_gamemode", 0) == 0 and not data.get("is_hardcore"),
         deaths=_deaths(data),
         splits=splits,
         advancements=advancements,

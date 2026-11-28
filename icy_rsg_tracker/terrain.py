@@ -175,3 +175,12 @@ def openness(region_dir, a, b, ocean_closed=False):
         open_blocks += o
         total += t
     return round(100 * open_blocks / total, 1) if total else None
+
+
+def has_structure(region_dir, x, z, name):
+    """Whether the saved chunk holding block (x, z) starts the structure `name` (e.g.
+    "buried_treasure"). False if the chunk isn't saved."""
+    level = _chunk(region_dir, math.floor(x) >> 4, math.floor(z) >> 4, {})
+    starts = ((level or {}).get("Structures") or {}).get("Starts") or {}
+    start = starts.get(name) or starts.get(f"minecraft:{name}")
+    return bool(start) and start.get("id") != "INVALID"

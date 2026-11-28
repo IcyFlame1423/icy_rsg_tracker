@@ -32,7 +32,7 @@ def to_json(cfg):
         "watch_interval_seconds": cfg.watch_interval_seconds,
         "instances": [{
             "name": i.name,
-            "world_name_pattern": i.world_name_pattern.pattern,
+            "world_name_pattern": i.world_name_pattern.pattern if i.world_name_pattern else "",
             "minecraft_dir": str(i.minecraft_dir) if i.minecraft_dir else "",
             "logs_found": bool(i.logs_dir and i.logs_dir.is_dir()),
         } for i in cfg.instances],
@@ -87,12 +87,11 @@ def parse(data):
             errors[f"{key}.name"] = "another instance already has this name"
         seen.add(name.lower())
         pattern_text = str(item.get("world_name_pattern", "")).strip()
+        valid = True
         try:
-            pattern = re.compile(pattern_text) if pattern_text else None
-            if pattern is None:
-                errors[f"{key}.world_name_pattern"] = "is required"
+            pattern = re.compile(pattern_text) if pattern_text else None  # empty: every world
         except re.error as e:
-            pattern = None
+            pattern, valid = None, False
             errors[f"{key}.world_name_pattern"] = f"not a valid pattern: {e}"
         mc = str(item.get("minecraft_dir", "")).strip()
         # Empty: the same default loading config.toml uses (a Prism instance with this name),
@@ -100,7 +99,7 @@ def parse(data):
         mc_path = Path(mc).expanduser() if mc else _default_minecraft_dir(name)
         if mc_path and not mc_path.is_dir():
             errors[f"{key}.minecraft_dir"] = "folder not found"
-        if pattern is not None:
+        if valid:
             instances.append(Instance(name, pattern, mc_path))
     out["instances"] = instances
 
@@ -150,8 +149,9 @@ def to_toml(cfg):
     if cfg.output_dir != PROJECT_DIR / "data":
         lines.append(f"output_dir = {_toml_str(cfg.output_dir)}")
     for inst in cfg.instances:
-        lines += ["", f"[instances.{_toml_str(inst.name)}]",
-                  f"world_name_pattern = {_toml_str(inst.world_name_pattern.pattern)}"]
+        lines += ["", f"[instances.{_toml_str(inst.name)}]"]
+        if inst.world_name_pattern is not None:
+            lines.append(f"world_name_pattern = {_toml_str(inst.world_name_pattern.pattern)}")
         if inst.minecraft_dir:
             lines.append(f"minecraft_dir = {_toml_str(inst.minecraft_dir)}")
     return "\n".join(lines) + "\n"
@@ -201,6 +201,6 @@ def detect_instances(extra_dirs=()):
                 "minecraft_dir": str(mc),
                 "launcher": str(launcher),
                 "rsg": bool(atum or rsg_worlds),
-                "world_name_pattern": RSG_PATTERN if (atum or rsg_worlds) else "",
+                "world_name_pattern": "",  # none: every world (survival, no cheats)
             })
     return found

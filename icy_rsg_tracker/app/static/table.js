@@ -7,13 +7,15 @@ import { icon } from "./icons.js";
  *            cell(row) -> node/string, num (right-aligned), title (header tooltip),
  *            sortable (false: a plain header, e.g. a column of buttons), icon (a split's icon key)}]
  * options: {sort: {id, dir: "asc"|"desc"}, pageSize, onRowClick(row), rowLabel(row),
- *           empty (text, or a function returning nodes)}
+ *           empty (text, or a function returning nodes), onSort(sort) (after a header click),
+ *           limit (show only the first N rows in the current sort, with no "Show more")}
  * Returns {render(rows, columns)}.
  */
 export function createTable(container, options) {
   let sort = { ...options.sort };
-  let shown = options.pageSize ?? 100;
+  let shown = options.limit ?? options.pageSize ?? 100;
   let rows = [], columns = [];
+  let resizeWatch = null;  // keeps the top scrollbar as wide as the table
 
   function sorted() {
     const col = columns.find((c) => c.id === sort.id) ?? columns.find((c) => c.sortable !== false);
@@ -65,8 +67,9 @@ export function createTable(container, options) {
       return tr;
     }));
     const table = h("table", { class: "data-table sticky-head" }, h("thead", {}, head), body);
-    container.append(h("div", { class: "table-scroll" }, table));
-    if (all.length > shown) {
+    const scroller = h("div", { class: "table-scroll bar-on-top" }, table);
+    container.append(topScrollbar(scroller, table), scroller);
+    if (all.length > shown && options.limit == null) {
       container.append(h("div", { class: "table-more" },
         h("span", { class: "muted" }, `Showing ${shown.toLocaleString()} of ${all.length.toLocaleString()}`),
         h("button", { type: "button", class: "button", onclick: () => { shown += options.pageSize ?? 100; draw(); } },
@@ -74,12 +77,33 @@ export function createTable(container, options) {
     }
   }
 
+  /** A scrollbar above a table too wide for the page, kept in step with the one below it, so
+   *  scrolling sideways doesn't mean going to the bottom first. Hidden when the table fits. */
+  function topScrollbar(scroller, table) {
+    const spacer = h("div", { class: "table-scroll-top-spacer" });
+    const bar = h("div", { class: "table-scroll-top", "aria-hidden": "true" }, spacer);
+    const follow = (from, to) => from.addEventListener("scroll", () => {
+      if (to.scrollLeft !== from.scrollLeft) to.scrollLeft = from.scrollLeft;
+    });
+    follow(bar, scroller);
+    follow(scroller, bar);
+    const fit = () => {
+      spacer.style.width = `${table.scrollWidth}px`;
+      bar.hidden = table.scrollWidth <= scroller.clientWidth + 1;
+    };
+    resizeWatch?.disconnect();
+    resizeWatch = new ResizeObserver(fit);
+    resizeWatch.observe(table);
+    resizeWatch.observe(scroller);
+    return bar;
+  }
+
   return {
     render(newRows, newColumns) {
       rows = newRows;
       columns = newColumns;
       if (!columns.some((c) => c.id === sort.id)) sort = { ...options.sort };
-      shown = options.pageSize ?? 100;
+      shown = options.limit ?? options.pageSize ?? 100;
       draw();
     },
   };

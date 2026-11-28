@@ -27,14 +27,25 @@ C = 90.0  # End cap: a zero cycle not done by then counts as a one cycle (if the
 # 1 and 0: each further perch takes 1:19 longer, the two cycle's median over a full bow's (2:01).
 MULTI_CYCLE = {2: (200.0, 271.0), 1: (279.0, 350.0), 0: (358.0, 429.0)}
 
-# W_1 (spawn to leaving the last overworld structure, assumed) and W_2 (the rest of the time to
-# nether enter, Ranked median minus W_1), by the last overworld structure's type.
+# W_1 (spawn to leaving the last overworld structure) and W_2 (the rest of the time to nether
+# enter: the Ranked median nether enter minus W_1), by the last overworld structure's type.
+# W_1 from when the top players looted the structure (their first time, Ranked timelines):
+# - buried treasure: Acquire Hardware (an iron ingot from the chest), median 16.4 s, plus 0.3 s
+#   to close the chest (the median gap on the tracker's own buried treasure runs);
+# - shipwreck: Acquire Hardware at the first chest, median 16.3 s, plus 7.5 s for the second
+#   chest: getting to it, 1 s to loot it and swimming out (the median on the tracker's own
+#   underwater shipwrecks with two chests, no blocks broken and no map chest);
+# - ruined portal: Ice Bucket Challenge (obsidian from the chest), median 8.5 s, leaving out the
+#   matches where it came after 60 s (obsidian from the bastion instead: none from 36 to 89 s);
+# - desert temple: 31.05 s inside (entering to leaving, the average of 4 playoff runs) plus 8 s
+#   to walk there (40 blocks, the average within 5 chunks, at 0.20 s per block);
+# - village: assumed.
 OVERWORLD = {
     "village": (105.0, 25.6),
-    "shipwreck": (25.0, 90.1),
-    "desert_pyramid": (30.0, 78.6),
-    "ruined_portal": (8.0, 53.8),
-    "buried_treasure": (12.0, 84.9),
+    "shipwreck": (23.8, 91.3),
+    "desert_pyramid": (39.0, 69.6),
+    "ruined_portal": (8.5, 53.3),
+    "buried_treasure": (16.7, 80.2),
     # Structureless (no structure of the five looted): iron mined in a cave and smelted. Not in
     # MCSR Ranked; estimated from Couriway's 100K no-reset runs (no deaths, final time within
     # the Tukey fences): his nether entry is a near-constant ~197 s behind top players' on the
@@ -103,6 +114,52 @@ BUCKET_NAMES = {
     7: "First rod to blind", 8: "Blind to stronghold", 9: "Stronghold to End", 10: "End",
 }
 
+# ---- Ranks: which MCSR Ranked tier a run (or a part of it) is as good as ----
+# From 590 completed Ranked matches (end of season 11): 10 per overworld seed type for each tier
+# from Iron I to Netherite, won by a player whose Elo before the match was in the middle of the
+# tier (its center +- 20% of its width; Netherite 2000-2200). Buried treasure below Emerald (those
+# tiers don't get the seeds) is their shipwreck runs with the overworld 0.82x as long (buried
+# treasure / shipwreck on Emerald and up). Each run scored like the top players (an average seed).
+# Every level is a ratio, time / a top player's time, so a tier's time scales with the seed: a
+# longer distance costs a slower player more. Each tier's median ratio is fitted with a logistic
+# curve in Elo (R2 0.88-0.99) and read at the middle of the tier:
+# - total: the finish (the End capped, as in the score) / the top players' total;
+# - the parts (see RANK_PARTS); the End uncapped (Ranked has no explosive counts).
+# Top 30 is the top-player sample's own medians. Below Iron I is Coal (its runs vary too much).
+# (tier, {"total" or part: time / top-player time}), worst first.
+RANKS = [
+    ("Iron I", {"total": 2.654, "1+2": 2.09, "4+5": 2.291, "7": 1.993, "8": 2.681, "9": 5.178, "End": 2.793}),
+    ("Iron II", {"total": 2.396, "1+2": 1.948, "4+5": 2.121, "7": 1.918, "8": 2.345, "9": 4.4, "End": 2.78}),
+    ("Iron III", {"total": 2.177, "1+2": 1.819, "4+5": 1.959, "7": 1.846, "8": 2.075, "9": 3.762, "End": 2.751}),
+    ("Gold I", {"total": 1.992, "1+2": 1.704, "4+5": 1.809, "7": 1.776, "8": 1.858, "9": 3.239, "End": 2.695}),
+    ("Gold II", {"total": 1.834, "1+2": 1.602, "4+5": 1.674, "7": 1.708, "8": 1.683, "9": 2.809, "End": 2.587}),
+    ("Gold III", {"total": 1.7, "1+2": 1.511, "4+5": 1.554, "7": 1.643, "8": 1.543, "9": 2.457, "End": 2.397}),
+    ("Emerald I", {"total": 1.587, "1+2": 1.43, "4+5": 1.45, "7": 1.58, "8": 1.429, "9": 2.168, "End": 2.116}),
+    ("Emerald II", {"total": 1.49, "1+2": 1.359, "4+5": 1.361, "7": 1.519, "8": 1.338, "9": 1.932, "End": 1.783}),
+    ("Emerald III", {"total": 1.408, "1+2": 1.296, "4+5": 1.286, "7": 1.46, "8": 1.265, "9": 1.737, "End": 1.48}),
+    ("Diamond I", {"total": 1.323, "1+2": 1.228, "4+5": 1.209, "7": 1.389, "8": 1.193, "9": 1.543, "End": 1.224}),
+    ("Diamond II", {"total": 1.241, "1+2": 1.16, "4+5": 1.14, "7": 1.308, "8": 1.128, "9": 1.365, "End": 1.08}),
+    ("Diamond III", {"total": 1.168, "1+2": 1.096, "4+5": 1.081, "7": 1.218, "8": 1.076, "9": 1.214, "End": 1.022}),
+    ("Netherite", {"total": 1.107, "1+2": 1.04, "4+5": 1.037, "7": 1.122, "8": 1.036, "9": 1.095, "End": 1.005}),
+    ("Top 30", {"total": 1.045, "1+2": 0.983, "4+5": 0.993, "7": 1.008, "8": 0.995, "9": 0.993, "End": 0.994}),
+]
+# The parts ranked, by bucket. Buckets 3 and 6 aren't: they vary little with skill-level (from
+# Iron to the top 30, less than the run-to-run noise). Ranked can't tell buckets 4 and 5 apart.
+RANK_PARTS = {"1+2": (1, 2), "4+5": (4, 5), "7": (7,), "8": (8,), "9": (9,), "End": (10,)}
+RANK_PART_NAMES = {"1+2": "Overworld", "4+5": "Bastion to fortress", "7": "First rod to blind",
+                   "8": "Blind to stronghold", "9": "Stronghold to End", "End": "End"}
+UNRANKED_BUCKETS = (3, 6)
+
+
+def rank_for(ratio, key):
+    """The best tier whose typical time / top-player time ("total" or a part) the run's matches or
+    beats; "Coal" below Iron I."""
+    best = "Coal"
+    for name, ratios in RANKS:
+        if ratio <= ratios[key]:
+            best = name
+    return best
+
 
 def _num(text):
     try:
@@ -121,7 +178,7 @@ def unscored_reason(row):
     if row.get("result") != "finished":
         return "Only finished runs are scored."
     if not row.get("bucket_1"):
-        return "Only runs played with the Hermes mod are scored."
+        return "This run's Hermes data hasn't loaded yet."
     final = _seconds(row.get("final_rta"))
     if final is None or any(_seconds(row.get(f"bucket_{i}")) is None for i in range(1, 10)):
         return "This run's times are incomplete."
@@ -206,8 +263,32 @@ def score(row):
             expected = min(C, expected + zeta * (C - w[10]))
         buckets.append({"bucket": i, "name": BUCKET_NAMES[i], "t": t[i], "W": w[i], "f": f[i],
                         "allowance": expected - w[i] * f[i], "expected": expected, "lost": t[i] - expected})
+    total = sum(b["lost"] for b in buckets)
+    # Each part's rank, and the most RTA (and lost) each tier would take on it on this seed.
+    parts = []
+    for key, numbers in RANK_PARTS.items():
+        shown = sum(buckets[i - 1]["expected"] for i in numbers)  # the table's expected
+        if key == "End":  # uncapped, like the Ranked samples: against W_10
+            time, base = end_time, W[10]
+        else:
+            time, base = sum(t[i] for i in numbers), shown
+        ratio = time / base
+        parts.append({"part": key, "name": RANK_PART_NAMES[key], "buckets": list(numbers),
+                      "ratio": ratio, "rank": rank_for(ratio, key),
+                      "cutoffs": [{"rank": name, "ratio": r[key], "rta": r[key] * base,
+                                   "lost": r[key] * base - shown} for name, r in RANKS]})
+    # The run's time / the time a top player is expected to take on this seed with its resources.
+    expected_total = sum(b["expected"] for b in buckets)
+    total_ratio = sum(b["t"] for b in buckets) / expected_total
     return {
-        "score": sum(b["lost"] for b in buckets),
+        "score": total,
+        "ratio": total_ratio,
+        "rank": rank_for(total_ratio, "total"),
+        # The most RTA (the End counted as in the score) and score each tier would have on this seed.
+        "cutoffs": [{"rank": name, "ratio": r["total"], "rta": r["total"] * expected_total,
+                     "score": (r["total"] - 1) * expected_total} for name, r in RANKS],
+        "parts": parts,
+        "unranked_buckets": list(UNRANKED_BUCKETS),
         "buckets": buckets,
         "inputs": {
             "structure": structure, "structure_name": STRUCTURE_NAMES[structure], "d3": d[3], "d8": d[8],

@@ -11,7 +11,7 @@ def row(**changes):
         "blazes_killed": "12", "blaze_rods": "6", "fire_resistance": "3", "ender_pearls": "24",
         "explosives": "6", "iron_pick": "1",
     }
-    w = {1: 25.0, 2: 90.1, **model.W}
+    w = {1: model.OVERWORLD["shipwreck"][0], 2: model.OVERWORLD["shipwreck"][1], **model.W}
     for i in range(1, 10):
         r[f"bucket_{i}"] = f"{int(w[i] // 60)}:{w[i] % 60:06.3f}"
     total = sum(w[i] for i in range(1, 11))
@@ -39,12 +39,44 @@ class ScoreTest(unittest.TestCase):
         self.assertGreater(far["buckets"][2]["expected"], near["buckets"][2]["expected"])
         self.assertLess(far["score"], near["score"])  # same time, harder seed: a better score
 
+    def test_ranks(self):
+        top30, netherite = model.RANKS[-1][1], model.RANKS[-2][1]
+        self.assertEqual(model.rank_for(top30["total"], "total"), "Top 30")
+        self.assertEqual(model.rank_for(netherite["total"], "total"), "Netherite")
+        self.assertEqual(model.rank_for(netherite["total"] + 0.01, "total"), "Diamond III")
+        self.assertEqual(model.rank_for(model.RANKS[0][1]["total"] + 0.01, "total"), "Coal")
+        self.assertEqual(model.rank_for(1.0, "8"), "Netherite")    # 1.0x: between top 30 and Netherite
+        for key in ("total", *model.RANK_PARTS):                   # every level better than the one before
+            values = [ratios[key] for _, ratios in model.RANKS]
+            self.assertEqual(values, sorted(values, reverse=True), key)
+
+    def test_a_tier_takes_longer_on_a_longer_seed(self):
+        """Every bucket 1.45x what a top player is expected to take (between Emerald II's 1.49 and
+        Emerald III's 1.41) is Emerald II on an average seed and on a far stronghold alike: a
+        tier's time scales with the seed instead of adding fixed seconds."""
+        ranks = []
+        for far in ("168.125", "300"):
+            expected = {b["bucket"]: b["expected"] for b in model.score(row(fortress_to_stronghold=far))["buckets"]}
+            t = {i: expected[i] * 1.45 for i in expected}
+            clock = lambda s: f"{int(s // 60)}:{s % 60:06.3f}"
+            r = row(fortress_to_stronghold=far, final_rta=clock(sum(t.values())),
+                    **{f"bucket_{i}": clock(t[i]) for i in range(1, 10)})
+            ranks.append(model.score(r)["rank"])
+        self.assertEqual(ranks, ["Emerald II", "Emerald II"])
+
+    def test_a_run_at_top_player_times_ranks_top_30(self):
+        sc = model.score(row())
+        self.assertIn(sc["rank"], ("Top 30", "Netherite"))  # 1.0x: just under the top 30's 1.045 median
+        for part in sc["parts"]:  # exactly a top player's time: 1.0x, between the two
+            self.assertIn(part["rank"], ("Top 30", "Netherite"), part["name"])
+        self.assertEqual(sc["unranked_buckets"], [3, 6])
+
     def test_overworld_distance_at_a_travel_speed(self):
         far = model.score(row(spawn_to_structure="64", structure_to_portal="160"))["buckets"]
-        self.assertAlmostEqual(far[0]["expected"] - 25.0, 0.15 * 32, places=2)   # shipwreck: 0.15 s/block
-        self.assertAlmostEqual(far[1]["expected"] - 90.1, 0.15 * 80, places=2)
+        self.assertAlmostEqual(far[0]["expected"] - model.OVERWORLD["shipwreck"][0], 0.15 * 32, places=2)   # shipwreck: 0.15 s/block
+        self.assertAlmostEqual(far[1]["expected"] - model.OVERWORLD["shipwreck"][1], 0.15 * 80, places=2)
         rp = model.score(row(last_structure="ruined_portal", spawn_to_structure="0", structure_to_portal="300"))
-        self.assertAlmostEqual(rp["buckets"][0]["expected"], 8.0 - 0.2 * 24, places=2)
+        self.assertAlmostEqual(rp["buckets"][0]["expected"], model.OVERWORLD["ruined_portal"][0] - 0.2 * 24, places=2)
         self.assertAlmostEqual(rp["buckets"][1]["f"], 1.0)  # the portal is the structure
 
     def test_a_far_stronghold_is_allowed_for(self):

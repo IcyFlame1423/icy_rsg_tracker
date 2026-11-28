@@ -43,8 +43,9 @@ COLUMNS = (
     "bastion_time",          # in a bastion
     "first_to_last_rod",     # first blaze rod to the last (before leaving the nether)
     # For the performance model (model.py):
-    "last_structure",        # the model's seed type: the last looted village, shipwreck, desert
-                             # temple, ruined portal or buried treasure ("" if none: structureless)
+    "last_structure",        # the seed type: the last looted village, shipwreck, desert temple or
+                             # buried treasure, else a looted ruined portal ("" if none: structureless;
+                             # before the nether, only set once one was looted)
     "spawn_to_structure",    # world spawn to entering the seed-type structure (last_structure)
     "structure_to_portal",   # leaving the seed-type structure to the overworld nether portal
     "bastion_to_fortress",   # leaving the bastion to entering the fortress
@@ -254,6 +255,12 @@ class PhaseTracker:
         # Overworld, until the nether is first entered.
         self.visits = []                 # [{"structure", "enter", "leave", "looted"}]
         self.last_chest_at = None
+        self.chest_visits = None         # the visits a chest open right now is in (None: none open)
+        self.last_chest_close = None     # (time, rta)
+        # Chests opened in the overworld before the nether outside any structure Hermes reported:
+        # [{"open", "close", "close_igt", "close_rta"}]. A buried treasure's structure is just its
+        # chest block, so Hermes never reports the player inside one (see add_buried_treasures).
+        self.loose_chests = []
         self.last_exit = None            # (time, igt, structure) leaving the last structure
         self.nether_enter = None         # (time, igt)
         self.portal_in = None            # overworld position going into the nether
@@ -267,6 +274,7 @@ class PhaseTracker:
         self.first_rod_igt = None
         self.last_rod_igt = None
         self.bastion = []                # [[enter igt, leave igt or None]]
+        self.bastion_exit_inventory = None  # leaving the bastion the last time, before leaving the nether
         self.exits = []                  # nether -> overworld: (time, nether position, overworld position)
         # Stronghold and the End.
         self.stronghold_enter = None     # time
@@ -283,8 +291,13 @@ class PhaseTracker:
         self.bastion_exit_before_fortress = None  # time
         self.end_slots = None
         self.iron_pick = False
-        self.first_blast_rta = None      # first bed or anchor used in the End
-        self.dragon_killed_rta = None
+        # The End: when each bed and anchor was placed (a bed blows up as it's placed; one broken
+        # again, e.g. to land on, is taken off). An anchor's placement is the only time known for
+        # it, and it's often placed well before it's blown up.
+        self.end_beds = []               # rta
+        self.end_anchors = []            # rta
+        self.dragon_killed_rta = None    # only when the player gets the kill (not a bed or anchor)
+        self.end_exit_rta = None         # through the exit portal: the dragon is dead
 
     def event(self, event):
         kind, data, now = event.get("type"), event.get("data") or {}, event.get("time") or 0
@@ -307,10 +320,21 @@ class PhaseTracker:
             self._dimension(data, now)
         elif kind == "screen":
             title = (data.get("title") or {})
+            chest = self.loose_chests[-1] if self.loose_chests else None
+            if chest and chest["close"] is None:  # any next screen (or none) closes the chest
+                chest.update(close=now, close_igt=self.igt, close_rta=self.rta)
+            if self.chest_visits is not None:  # the same for a chest in a structure
+                for visit in self.chest_visits:
+                    visit.update(looted_at=now, looted_rta=self.rta)
+                self.chest_visits = None
+                self.last_chest_close = (now, self.rta)
             if isinstance(title, dict) and title.get("translate") in STORAGE:
                 self.last_chest_at = now
-                for visit in self._open_visits():
+                self.chest_visits = self._open_visits()
+                for visit in self.chest_visits:
                     visit["looted"] = True
+                if before_nether and self.dimension == OVERWORLD and not self._open_visits():
+                    self.loose_chests.append({"open": now, "close": None, "close_igt": None, "close_rta": None})
         elif kind == "inside_structures":
             self._structures({s.split(":")[-1] for s in data.get("structures") or []}, now, before_nether)
         elif kind == "stat":
@@ -348,6 +372,31 @@ class PhaseTracker:
             return 6
         return 5
 
+    def add_buried_treasures(self, is_treasure):
+        """Turn the chests opened outside any reported structure into buried treasure visits,
+        where is_treasure(time) says the player's chunk then holds one (from the ghost and the
+        world's saved chunks). A visit runs from opening the chest to closing it; opening it
+        again extends it."""
+        for chest in self.loose_chests:
+            if chest["close"] is None:
+                continue
+            # A chest opened just before Hermes reported a structure belongs to that structure.
+            if any(chest["open"] <= v["enter"] <= chest["open"] + STRUCTURE_LAG_MS for v in self.visits):
+                continue
+            if not is_treasure(chest["open"]):
+                continue
+            last = self.visits[-1] if self.visits else None
+            if last and last["structure"] == "buried_treasure" and chest["open"] - last["leave"] <= SAME_VISIT_MS:
+                visit = last
+            else:
+                visit = {"structure": "buried_treasure", "enter": chest["open"], "looted": True}
+                self.visits.append(visit)
+            visit.update(leave=chest["close"], leave_rta=chest["close_rta"])
+            if self.last_exit is None or chest["close"] >= self.last_exit[0]:
+                self.last_exit = (chest["close"], chest["close_igt"], "buried_treasure")
+                self.last_exit_rta = chest["close_rta"]
+        self.visits.sort(key=lambda v: v["enter"])
+
     def _open_visits(self):
         return [v for v in self.visits if v["leave"] is None]
 
@@ -355,8 +404,11 @@ class PhaseTracker:
         old, new = data.get("old_dimension"), data.get("dimension") or self.dimension
         if old is None and self.spawn is None:
             self.spawn = _xz(data.get("position"))
+        respawn = self.respawned_at is not None and now - self.respawned_at <= RESPAWN_MS
         if self.bastion and self.bastion[-1][1] is None:
             self.bastion[-1][1] = self.igt  # left the bastion through a portal (or died)
+            if old == NETHER and not respawn and not self.exits:
+                self.bastion_exit_inventory = dict(self.slots)
         if new == NETHER and self.nether_enter is None and old == OVERWORLD:
             self.nether_enter = (now, self.igt)
             self.portal_in, self.portal_out = _xz(data.get("old_position")), _xz(data.get("position"))
@@ -368,7 +420,8 @@ class PhaseTracker:
             for visit in self._open_visits():
                 visit["leave"] = now
                 visit["leave_rta"] = self.rta
-        respawn = self.respawned_at is not None and now - self.respawned_at <= RESPAWN_MS
+        if old == END and new == OVERWORLD and not respawn and self.end_exit_rta is None:
+            self.end_exit_rta = self.rta
         if old == NETHER and new == OVERWORLD and not respawn:
             self.exits.append((now, _xz(data.get("old_position")), _xz(data.get("position"))))
         if new == END and self.end_enter is None:
@@ -395,8 +448,13 @@ class PhaseTracker:
                     last["leave"] = None  # back in the same one
                 else:
                     looted = self.last_chest_at is not None and now - self.last_chest_at <= STRUCTURE_LAG_MS
-                    self.visits.append({"structure": name, "enter": now, "leave": None, "leave_rta": None,
-                                        "looted": looted})
+                    visit = {"structure": name, "enter": now, "leave": None, "leave_rta": None,
+                             "looted": looted, "looted_at": None, "looted_rta": None}
+                    self.visits.append(visit)
+                    if looted and self.chest_visits is not None:  # the chest is still open
+                        self.chest_visits.append(visit)
+                    elif looted and self.last_chest_close and self.last_chest_close[0] >= self.last_chest_at:
+                        visit["looted_at"], visit["looted_rta"] = self.last_chest_close
         if self.dimension == NETHER and self.nether_enter is not None:
             if "bastion_remnant" in entered:
                 last = self.bastion[-1] if self.bastion else None
@@ -411,6 +469,8 @@ class PhaseTracker:
             if "bastion_remnant" in left and self.bastion and self.bastion[-1][1] is None:
                 self.bastion[-1][1] = self.igt
                 self.bastion_left = (now, self.rta, self._bucket())
+                if not self.exits:  # still on the way to the stronghold portal
+                    self.bastion_exit_inventory = dict(self.slots)
             if self.first_structure is None and entered & NETHER_STRUCTURES:
                 self.first_structure = (now, self.igt, sorted(entered & NETHER_STRUCTURES)[0])
             if self.fortress_enter is None and "fortress" in entered:
@@ -431,9 +491,12 @@ class PhaseTracker:
         if action == "minecraft.crafted" and item in PICKAXES and self.nether_enter is None:
             self.iron_pick = True
         if self.dimension == END:
-            if (action == "minecraft.used" and (item.endswith("_bed") or item == "minecraft:respawn_anchor")
-                    and self.first_blast_rta is None):
-                self.first_blast_rta = self.rta
+            if action == "minecraft.used" and item.endswith("_bed"):
+                self.end_beds.append(self.rta)
+            elif action == "minecraft.mined" and item.endswith("_bed") and self.end_beds:
+                self.end_beds.pop()  # placed and broken again: not a blast
+            elif action == "minecraft.used" and item == "minecraft:respawn_anchor":
+                self.end_anchors.append(self.rta)
             if stat == "minecraft.killed:minecraft.ender_dragon" and self.dragon_killed_rta is None:
                 self.dragon_killed_rta = self.rta
         if (action == "minecraft.used" and self.dimension == NETHER and self.nether_enter is not None
@@ -460,6 +523,8 @@ class PhaseTracker:
         route = [self.spawn] + [at(v["enter"]) for v in self.visits if v["structure"] not in NOT_LAST_STRUCTURE]
         if len(route) > 1 and all(route):
             columns["spawn_to_structures"] = sum(straight(a, b) for a, b in zip(route, route[1:]))
+        if not self.nether_enter and (reference := self._seed_structure()):
+            columns["last_structure"] = reference["structure"]  # the seed type so far (runs page)
         if self.nether_enter:
             enter_time, enter_igt = self.nether_enter
             overworld["materials"], overworld["materials_from"] = raw_materials(self.nether_inventory)
@@ -477,10 +542,14 @@ class PhaseTracker:
                                           "distance": columns["to_first_structure"],
                                           "blocks": sum(self.blocks_used.values()),
                                           "blocks_from": dict(sorted(self.blocks_used.items(), key=lambda p: -p[1]))}
+        # Slot (0-8 hotbar, 9-35 the rest, 36-39 armor feet to head, 40 offhand) -> [item, count]:
+        # leaving the bastion (after trading, whichever structure came first), or entering the
+        # fortress in a run without a bastion.
+        shown = self.bastion_exit_inventory or (self.fortress_enter and self.fortress_inventory)
+        if shown:
+            nether["inventory"] = {"at": "bastion_exit" if self.bastion_exit_inventory else "fortress_enter",
+                                   "slots": {slot: [_short(item_id), count] for slot, (item_id, count) in shown.items()}}
         if self.fortress_enter:
-            # Slot (0-8 hotbar, 9-35 the rest, 36-39 armor feet to head, 40 offhand) -> [item, count].
-            nether["fortress_slots"] = {slot: [_short(item_id), count]
-                                        for slot, (item_id, count) in self.fortress_inventory.items()}
             if self.first_rod_igt is not None:
                 nether["first_rod_ms"] = self.first_rod_igt - self.fortress_enter[1]
                 columns["first_to_last_rod"] = self.last_rod_igt - self.first_rod_igt
@@ -521,17 +590,28 @@ class PhaseTracker:
             routes[7] = (at(self.fortress_enter[0]), self.exits[0][1], False)
         return routes
 
+    def _seed_structure(self):
+        """The visit that sets the seed type: the last looted of the five MCSR Ranked seed types,
+        except that a ruined portal only counts when it's the only one looted (a portal looted
+        after a village, say, is on the way to the nether: it's a village seed). None if none."""
+        looted = [v for v in self.visits if v["structure"] in SEED_TYPES and v["looted"]]
+        main = [v for v in looted if v["structure"] != "ruined_portal"]
+        return (main or looted or [None])[-1]
+
     def _model_columns(self, columns, at):
         """The performance model's inputs (see COLUMNS and model.py)."""
-        # The seed type is the last of the five MCSR Ranked seed types that was looted; bucket 1
-        # ends on leaving it. Without one the run is structureless, all of it in bucket 2.
-        looted = [v for v in self.visits if v["structure"] in SEED_TYPES and v["looted"]]
-        reference = looted[-1] if looted else None
+        # Bucket 1 ends on leaving the seed-type structure, or for a ruined portal on closing its
+        # chest (the portal is often lit right there, so the player may never leave it). Without
+        # one the run is structureless, all of it in bucket 2.
+        reference = self._seed_structure()
         columns["last_structure"] = reference["structure"] if reference else ""
-        first = (reference["leave_rta"] or self.time_in["pre"]) if reference else 0
+        end, end_rta = (reference["leave"], reference["leave_rta"]) if reference else (None, None)
+        if reference and reference["structure"] == "ruined_portal" and reference.get("looted_rta") is not None:
+            end, end_rta = reference["looted_at"], reference["looted_rta"]
+        first = (end_rta or self.time_in["pre"]) if reference else 0
         if reference:
             columns["spawn_to_structure"] = straight(self.spawn, at(reference["enter"]))
-            left = reference["leave"]
+            left = end
             columns["structure_to_portal"] = (0 if left is not None and left == self.nether_enter[0]
                                               else straight(at(left), self.portal_in) if left else None)
         columns["bucket_1"] = round(first)
@@ -549,9 +629,16 @@ class PhaseTracker:
         if self.end_slots is not None:
             columns["explosives"] = usable_explosives(self.end_slots)
         columns["iron_pick"] = int(self.iron_pick)
-        if self.dragon_killed_rta is not None:  # no beds or anchors used in the End: no one cycle
-            columns["one_cycle_hit"] = int(self.first_blast_rta is not None
-                                           and self.dragon_killed_rta - self.first_blast_rta <= ONE_CYCLE_MS)
+        # One cycle: the dragon died within ONE_CYCLE_MS of the first blast. Blasts are the beds
+        # (anchors only when no bed was used: their placement can come long before they blow up).
+        # A bed or anchor kill isn't credited to the player (no kill stat), so leaving through the
+        # exit portal means the last blast killed it.
+        blasts = self.end_beds or self.end_anchors
+        killed = self.dragon_killed_rta
+        if killed is None and self.end_exit_rta is not None and blasts:
+            killed = blasts[-1]
+        if killed is not None:  # no beds or anchors used in the End: no one cycle
+            columns["one_cycle_hit"] = int(bool(blasts) and killed - blasts[0] <= ONE_CYCLE_MS)
 
 
 def usable_explosives(slots):

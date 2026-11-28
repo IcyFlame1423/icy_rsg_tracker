@@ -120,8 +120,19 @@ class ItemCountTest(unittest.TestCase):
         # Blown up in the nether: gone.
         self.dimension("the_nether")
         self.at(1000); self.stat("minecraft.used:minecraft.white_bed"); self.inv(s0=("white_bed", 1))
-        self.at(1000); self.stat("minecraft.mined:minecraft.white_bed"); self.inv(s0=("white_bed", 2))  # found one
+        self.at(1000); self.inv(s0=("white_bed", 2))  # found one
         self.assertEqual(self.got("beds"), 3)
+        self.assertEqual(self.detail("beds_nether"), 1)
+
+    def test_a_bed_placed_in_the_end_then_broken_and_picked_up_isnt_new(self):
+        self.inv(s0=("white_bed", 3))
+        self.dimension("the_end")
+        self.at(1000); self.stat("minecraft.used:minecraft.white_bed"); self.inv(s0=("white_bed", 2))
+        self.at(1500); self.stat("minecraft.mined:minecraft.white_bed")
+        self.at(600); self.inv(s0=("white_bed", 3))                   # picked up again
+        self.at(9000); self.stat("minecraft.used:minecraft.white_bed"); self.inv(s0=("white_bed", 2))
+        self.at(1500); self.stat("minecraft.used:minecraft.white_bed"); self.inv(s0=("white_bed", 1))
+        self.assertEqual((self.got("beds"), self.detail("beds_end")), (3, 2))
 
     def test_nothing_counts_after_opening_to_lan(self):
         self.inv(s0=("ender_pearl", 4))
@@ -178,6 +189,16 @@ class ItemCountTest(unittest.TestCase):
         self.dimension("the_end")
         self.at(1000); anchor()
         self.assertEqual((self.detail("anchors_end"), self.detail("anchors_lost")), (1, 1))
+
+    def test_an_anchor_placed_in_the_end_then_broken_and_picked_up_isnt_new(self):
+        self.inv(s0=("respawn_anchor", 2))
+        self.dimension("the_end")
+        anchor = lambda: self.stat("minecraft.used:minecraft.respawn_anchor")
+        self.at(1000); anchor(); self.inv(s0=("respawn_anchor", 1))
+        self.at(1500); self.stat("minecraft.mined:minecraft.respawn_anchor")
+        self.at(600); self.inv(s0=("respawn_anchor", 2))              # picked up again
+        self.at(9000); anchor(); self.inv(s0=("respawn_anchor", 1))
+        self.assertEqual((self.got("respawn_anchors"), self.detail("anchors_end")), (2, 1))
 
     def test_obsidian_is_the_most_held_and_from_bastions_and_the_diamond_pickaxe(self):
         self.inv(s0=("obsidian", 3))

@@ -18,7 +18,7 @@ from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 from urllib.request import urlopen
 
-from .. import __version__, settings
+from .. import __version__, hermes, settings
 from ..importer import import_records
 from ..watch import Tracker, lower_priority
 from . import data, player
@@ -144,6 +144,17 @@ class App:
         while not self.stop.wait(1):
             self.check_pages()
 
+    def setup_problem(self):
+        """What's missing for the tracker to work fully, for the status bar (None if nothing)."""
+        found = [i for i in self.cfg.instances if i.minecraft_dir]
+        if not found:  # deaths can't be split, no icons, player or Hermes data
+            return "Minecraft instance not found. Set its folder in Settings."
+        missing = [i.name for i in found if not hermes.installed(i.minecraft_dir)]
+        if missing:
+            return (f"The Hermes mod isn't installed in {', '.join(missing)}. The tracker needs it for item "
+                    "counts, the run breakdown, seed types and scores: add it to the instance's mods folder.")
+        return None
+
     def status(self, page=None):
         self.page_seen(page)
         t = self.tracker
@@ -157,9 +168,7 @@ class App:
             "app_version": __version__,
             "ongoing": {i.name: self.session_ongoing(i.name) for i in self.cfg.instances},
             "textures": self.textures.jar() is not None,  # icons can be shown
-            # No instance has a Minecraft folder: deaths can't be split, no icons or player.
-            "setup": None if any(i.minecraft_dir for i in self.cfg.instances) else
-                     "Minecraft instance not found. Set its folder in Settings.",
+            "setup": self.setup_problem(),
         }
 
 

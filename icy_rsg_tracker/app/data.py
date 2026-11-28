@@ -172,6 +172,10 @@ def run_json(row):
         "world_name": row["world_name"],
         "world_number": _int(row["world_number"]),
         "seed": row["seed"] or None,  # only if /seed was typed in the world
+        # The overworld seed type (phases.PhaseTracker._seed_structure): "none" for a structureless
+        # run that reached the nether; None without Hermes data or before anything was looted.
+        "seed_type": row.get("last_structure") or ("none" if row.get("bucket_1") else None),
+        "score": float(row["score"]) if row.get("score") else None,  # seconds lost (model.py)
         "worlds_generated": _int(row["worlds_generated"]),
         "result": row["result"],
         "splits": {name: parse_time(row[name]) for name in SPLIT_NAMES},
@@ -253,12 +257,14 @@ def _baseline(rows, times, run):
     for name in ADVANCEMENTS:
         if run[name]:
             values = [parse_time(r[name]) for r in rows if r[name]]
-            advancements[name] = {"count": len(values), "avg_ms": _avg(values), "best_ms": min(values)}
+            advancements[name] = {"count": len(values), "avg_ms": _avg(values),
+                                  "best_ms": min(values) if values else None}
     return {"runs": len(rows), "splits": splits, "advancements": advancements}
 
 
 def run_detail(store, instance_name, run_id):
-    """One run with its split times, and how they compare with all runs and its session."""
+    """One run with its split times, and how they compare with its session and with the runs in
+    each time window (ending now, as on the other pages)."""
     rows = store.rows(instance_name)
     index = next((i for i, r in enumerate(rows) if r["run_id"] == run_id), None)
     if index is None:
@@ -293,5 +299,7 @@ def run_detail(store, instance_name, run_id):
         "phases": phases,
         "score": model.score(row),
         "unscored_reason": model.unscored_reason(row),
-        "compare": {"all": _baseline(rows, times, row), "session": _baseline(session, times, row)},
+        "compare": {"session": _baseline(session, times, row),
+                    **{w: _baseline(select_window(rows, w), times, row) for w in ("today", "7d", "30d", "1y")},
+                    "all": _baseline(rows, times, row)},
     }

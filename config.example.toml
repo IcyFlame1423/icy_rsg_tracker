@@ -15,13 +15,15 @@
 
 # Instances to track. Every instance writes to the same SpeedRunIGT records folder, so
 # records are matched by world name (regex). Each instance gets its own folder:
-# data/<name>/runs.csv. Records matching no instance are ignored.
-# Default: just the RSG instance below.
+# data/<name>/runs.csv. Records matching no instance are ignored. An instance without a
+# world_name_pattern takes every world that no instance with a pattern matches.
+# Default: one instance with no pattern (every world). Only survival worlds created without
+# cheats are tracked, whatever the pattern.
 # minecraft_dir is the instance's .minecraft folder; its logs/ are used to tell death resets
 # (respawn at a bed/anchor) from accidental deaths. Defaults to the Prism Launcher instance
 # with the same name, if there is one.
 # [instances.speedrun]
-# world_name_pattern = '^Random Speedrun #\d+$'
+# world_name_pattern = '^Random Speedrun #\d+$'   # optional: only Atum's RSG worlds
 # minecraft_dir = '~/AppData/Roaming/PrismLauncher/instances/speedrun/minecraft'
 #
 # [instances.ranked]

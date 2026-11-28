@@ -2,7 +2,6 @@
 import * as fmt from "./fmt.js";
 import { $, getJSON, h } from "./common.js";
 
-const RSG_PATTERN = "^Random Speedrun #\\d+$";
 let current = null;     // settings as last loaded/saved
 let instances = [];     // the instance rows being edited
 let detected = null;    // results of "Detect instances"
@@ -96,7 +95,7 @@ function renderInstances() {
       "Its CSVs go in data\\<name>\\", `instances.${i}.name`),
     field(["World name pattern ", patternHelp()], h("input", { type: "text", value: inst.world_name_pattern, spellcheck: "false",
                                               oninput: (e) => { inst.world_name_pattern = e.target.value; } }),
-      "Runs whose world name matches go to this instance (a regular expression).", `instances.${i}.world_name_pattern`),
+      "Runs whose world name matches go to this instance (a regular expression). Leave it empty to track every world.", `instances.${i}.world_name_pattern`),
     field("Minecraft folder", h("input", { type: "text", value: inst.minecraft_dir, spellcheck: "false",
                                            placeholder: "Leave empty to use the Prism instance with this name",
                                            oninput: (e) => { inst.minecraft_dir = e.target.value; } }),
@@ -116,7 +115,7 @@ function renderInstances() {
     h("span", { class: "field-error", "data-error": "instances" }),
     h("div", { class: "button-row" },
       h("button", { type: "button", class: "button", onclick: () => {
-        instances.push({ name: "", world_name_pattern: RSG_PATTERN, minecraft_dir: "" });
+        instances.push({ name: "", world_name_pattern: "", minecraft_dir: "" });
         renderInstances();
       } }, "Add instance"),
       h("button", { type: "button", class: "button", onclick: detect }, "Detect instances")),

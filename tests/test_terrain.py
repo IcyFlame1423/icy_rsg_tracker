@@ -52,6 +52,33 @@ class TerrainTest(unittest.TestCase):
         diagonal = terrain.route_chunks({"x": 0, "z": 0}, {"x": 47, "z": 47})
         self.assertEqual((diagonal[0], diagonal[-1]), ((0, 0), (2, 2)))
 
+    def test_structure_start_in_a_chunk(self):
+        import struct, tempfile, zlib
+        from pathlib import Path
+
+        def nbt_compound(d):  # just enough NBT writing for this test
+            out = b""
+            for k, v in d.items():
+                key = struct.pack(">H", len(k)) + k.encode()
+                if isinstance(v, dict):
+                    out += b"\x0a" + key + nbt_compound(v)
+                else:
+                    out += b"\x08" + key + struct.pack(">H", len(v)) + v.encode()
+            return out + b"\x00"
+        level = {"Level": {"Structures": {"Starts": {"buried_treasure": {"id": "minecraft:buried_treasure"},
+                                                      "village": {"id": "INVALID"}}}}}
+        data = zlib.compress(b"\x0a\x00\x00" + nbt_compound(level))
+        chunk = struct.pack(">IB", len(data) + 1, 2) + data
+        region = bytearray(8192)
+        i = 4 * ((-7 & 31) + (-11 & 31) * 32)          # chunk (-7, -11) of region r.-1.-1
+        region[i:i + 4] = (2 << 8 | 1).to_bytes(4, "big")  # at sector 2, 1 sector long
+        region += chunk + bytes(-len(chunk) % 4096)
+        with tempfile.TemporaryDirectory() as d:
+            (Path(d) / "r.-1.-1.mca").write_bytes(bytes(region))
+            self.assertTrue(terrain.has_structure(d, -102.3, -166.8, "buried_treasure"))   # in chunk (-7, -11)
+            self.assertFalse(terrain.has_structure(d, -102.3, -166.8, "village"))          # not generated there
+            self.assertFalse(terrain.has_structure(d, -90.0, -166.8, "buried_treasure"))  # the next chunk: not saved
+
     def test_no_saved_chunks(self):
         self.assertIsNone(terrain.openness("no-such-folder", {"x": 0, "z": 0}, {"x": 100, "z": 0}))
 

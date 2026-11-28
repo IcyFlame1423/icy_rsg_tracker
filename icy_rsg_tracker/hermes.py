@@ -17,6 +17,10 @@ from . import phases, terrain
 
 # The items counted, by what they're called in runs.csv.
 # These count as the most held at once rather than every one obtained.
+# Bump whenever what's worked out from a play log changes (this file, phases.py, terrain.py), so
+# runs already in runs.csv are read again instead of keeping their stored results (see play_log_key).
+PLAY_LOG_VERSION = 7
+
 MOST_HELD = ("ender_pearls", "obsidian")
 ITEMS = ("ender_pearls", "blaze_rods", "beds", "respawn_anchors", "fire_resistance", "obsidian")
 # More about each, also kept in runs.csv (see ItemCounter.details).
@@ -26,7 +30,7 @@ DETAILS = (
     "pearls_into_eyes",       # crafted into eyes of ender
     "beds_nether",            # blown up in the nether, outside a fortress
     "beds_fortress",          # blown up in a fortress
-    "beds_end",               # placed in the End (to kill the dragon)
+    "beds_end",               # blown up in the End (to kill the dragon)
     "beds_lost",              # placed in the overworld and never broken, or dropped and never picked up
     "anchors_end",            # placed in the End
     "anchors_lost",           # placed outside the End and never broken (or blown up), or dropped and lost
@@ -114,6 +118,7 @@ class ItemCounter:
         self.igt = 0                      # in-game time of the latest event (ms)
         self.structures = set()           # the structures the player is inside
         self.unbroken = defaultdict(int)  # beds/anchors placed and not (yet) broken again
+        self.placed_at = defaultdict(list)  # kind -> [(dimension, where it was counted)], as placed
         self.counts = defaultdict(int)    # the details() numbers being added up
         self.diamond_pickaxe = False
 
@@ -170,17 +175,31 @@ class ItemCounter:
                 self.counts["pearls_used"] += n
         elif stat.startswith("minecraft.used:") and kind in ("beds", "respawn_anchors"):
             if self.dimension == "minecraft:the_end":
-                self.counts["beds_end" if kind == "beds" else "anchors_end"] += n
+                where = "beds_end" if kind == "beds" else "anchors_end"
             elif kind == "beds" and self.dimension == "minecraft:the_nether":
-                self.counts["beds_fortress" if "fortress" in self.structures else "beds_nether"] += n
+                where = "beds_fortress" if "fortress" in self.structures else "beds_nether"
             else:  # a bed in the overworld, an anchor in the overworld or the nether
-                self.unbroken[kind] += n
+                where = None  # unbroken until it's broken again
+            for _ in range(n):
+                self.placed_at[kind].append((self.dimension, where))
+                self._where(kind, where, 1)
         elif stat.startswith("minecraft.mined:") and kind in ("beds", "respawn_anchors"):
-            # Broken again: one placed before it (one not placed by the player, e.g. a village
-            # bed, has nothing to match).
-            self.unbroken[kind] = max(0, self.unbroken[kind] - n)
+            # Broken again: the latest one placed in this dimension. It wasn't blown up after
+            # all (a bed placed in the End or the nether, then broken instead). One not placed
+            # by the player, e.g. a village bed, has nothing to match.
+            for _ in range(n):
+                placed = self.placed_at[kind]
+                i = next((i for i in range(len(placed) - 1, -1, -1) if placed[i][0] == self.dimension), None)
+                if i is not None:
+                    self._where(kind, placed.pop(i)[1], -1)
         elif item == "minecraft.diamond_pickaxe" and stat.startswith(("minecraft.crafted:", "minecraft.picked_up:")):
             self.diamond_pickaxe = True
+
+    def _where(self, kind, where, n):
+        if where:
+            self.counts[where] = max(0, self.counts[where] + n)
+        else:
+            self.unbroken[kind] = max(0, self.unbroken[kind] + n)
 
     def details(self):
         """{name in DETAILS: number}, for what the run did with its items."""
@@ -233,9 +252,9 @@ class ItemCounter:
         placed = min(n, self._recent_stat(now, "minecraft.used:", k))
         if k == "fire_resistance":
             self.counts["fire_resistance_used"] += placed  # drunk or thrown
-        # A bed placed in the nether or the End explodes; anything else placed can be broken.
-        if placed and k in ("beds", "respawn_anchors", "obsidian") and not (
-                k == "beds" and self.dimension != "minecraft:overworld"):
+        # Anything placed can be broken and picked up again, even a bed in the nether or the
+        # End (one that blows up is never broken, so nothing picked up is matched to it).
+        if placed and k in ("beds", "respawn_anchors", "obsidian"):
             self.placed[k] += placed
         # Anything else is used up: thrown (pearls), drunk, crafted into something, burnt.
 
@@ -264,10 +283,32 @@ class ItemCounter:
             self.obtained[k] += n
 
 
+def installed(minecraft_dir):
+    """Whether the instance has the Hermes mod (a hermes*.jar in its mods folder): the tracker
+    needs it for item counts, the run breakdown, seed types and scores."""
+    try:
+        return any(p.name.lower().startswith("hermes") and p.name.lower().endswith(".jar")
+                   for p in (minecraft_dir / "mods").iterdir())
+    except OSError:
+        return False
+
+
 def play_log_path(minecraft_dir, world_name):
     if not minecraft_dir or not world_name:
         return None
     return minecraft_dir / "saves" / world_name / "hermes" / "play.log"
+
+
+def play_log_key(minecraft_dir, world_name):
+    """A fingerprint of the world's play log: PLAY_LOG_VERSION, its size and when it changed, or
+    None without one. Only the folder entry is read, not the file (opening thousands of play
+    logs is what makes a rebuild slow), so unchanged runs can keep what was worked out before."""
+    path = play_log_path(minecraft_dir, world_name)
+    try:
+        st = path.stat() if path else None
+    except OSError:
+        return None
+    return f"{PLAY_LOG_VERSION}:{st.st_size}:{st.st_mtime_ns}" if st else None
 
 
 def read_play_log(minecraft_dir, world_name):
@@ -298,6 +339,13 @@ def read_play_log(minecraft_dir, world_name):
     except OSError:
         return None
     ghost = phases.Ghost.read(path.parent, first_time)
+    if ghost:  # buried treasures, which Hermes doesn't report (see PhaseTracker.add_buried_treasures)
+        overworld = path.parent.parent / "region"
+
+        def is_treasure(time):
+            at = ghost.position(time)
+            return bool(at) and terrain.has_structure(overworld, at["x"], at["z"], "buried_treasure")
+        tracker.add_buried_treasures(is_treasure)
     summary = tracker.summary(ghost)
     if ghost:  # the terrain along each nether route, from the world's saved chunks
         region = path.parent.parent / "DIM-1" / "region"

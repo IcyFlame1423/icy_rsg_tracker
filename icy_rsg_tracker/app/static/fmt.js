@@ -60,3 +60,8 @@ export function dateTime(iso) {
 export function clock(iso) {
   return new Date(iso).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" });
 }
+
+/** A score in seconds with its sign: "+25.3 s", "−4.0 s". */
+export function signedSeconds(s) {
+  return `${s < 0 ? "−" : "+"}${Math.abs(s).toFixed(1)} s`;
+}

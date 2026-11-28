@@ -82,7 +82,7 @@ export const splitsPage = {
       h("span", { class: "filter-label", "aria-hidden": "true" }, "From"),
       iconSelect({
         options: [[START, "Beginning", "clock"], ...fromSplits().map(([value, text]) => [value, text, value])],
-        value: fromSplit()?.[0] ?? START, ariaLabel: "Time measured from",
+        value: fromSplit()?.[0] ?? START, ariaLabel: "IGT measured from",
         onChange: (v) => {
           from = v;
           localStorage.setItem("splitsPage.from", from);
@@ -145,7 +145,6 @@ function draw() {
     : data.summary.stats.splits[split];
   const start = fromSplit(), segment = start != null;
   const prevName = segment ? start[1] : null;
-  const pb = segment ? data.runs.from_pbs[start[0]]?.[split] : adv ? data.runs.advancement_pbs[advId()] : data.runs.pbs[split];
   const verb = adv ? "got" : "reached";
 
   $("splits-empty").hidden = timed.length > 0;
@@ -158,12 +157,12 @@ function draw() {
 
   $("splits-title").replaceChildren(withIcon(split, name));
   $("splits-mode-note").textContent = !segment ? ""
-    : adv ? `Time from ${splitInSentence(prevName)} to ${lower}, for runs that reached both (negative if it came first).`
-    : `Time from ${splitInSentence(prevName)} to ${lower}, for runs that reached both.`;
+    : adv ? `IGT from ${splitInSentence(prevName)} to ${lower}, for runs that reached both (negative if it came first).`
+    : `IGT from ${splitInSentence(prevName)} to ${lower}, for runs that reached both.`;
   $("splits-mode-note").hidden = !$("splits-mode-note").textContent;
   $("splits-over-time-note").textContent = segment
-    ? `Every run that reached both${adv ? "" : " splits"}, oldest to newest, with a moving average.`
-    : `Every run that ${verb} this ${adv ? "advancement" : "split"}, oldest to newest, with a moving average.`;
+    ? `Every run that reached both${adv ? "" : " splits"}, with a moving average.`
+    : `Every run that ${verb} this ${adv ? "advancement" : "split"}, with a moving average.`;
   $("splits-over-time-note").textContent += " Click a dot to view the corresponding run.";
   const whole = split === "nether" || adv ? "runs played" : "nether enters";
   const prevCount = segment ? data.summary.stats.splits[start[0]].count : null;
@@ -176,10 +175,9 @@ function draw() {
         + (segment && timed.length !== s.count ? ` · ${fmt.int(timed.length)} also reached ${splitInSentence(prevName)}` : "")),
     tile("Average", fmt.timeTenths(segment ? mean : s.avg_ms)),
     tile("Median", fmt.timeTenths(segment ? quantile(sorted, 0.5) : s.median_ms)),
-    tile("Best in window", fmt.time(sorted[0]), pb ? `all-time best ${fmt.time(pb.ms)}` : ""),
+    tile("Best in window", fmt.time(sorted[0])),
     tile("Middle 50%", sorted.length >= 4
-      ? [quantile(sorted, 0.25), quantile(sorted, 0.75)].map(fmt.timeShort).join(sorted[0] < 0 ? " to " : "–") : "–",
-      "half your times fall in here"),
+      ? [quantile(sorted, 0.25), quantile(sorted, 0.75)].map(fmt.timeShort).join(sorted[0] < 0 ? " to " : "–") : "–"),
   );
 
   const target = adv ? name : name.toLowerCase();

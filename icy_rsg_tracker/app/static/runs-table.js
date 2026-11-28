@@ -3,6 +3,7 @@
 import * as fmt from "./fmt.js";
 import { h, SPLITS } from "./common.js";
 import { createTable } from "./table.js";
+import { SEED_TYPE_NAMES, seedTypeLabel } from "./seedtypes.js";
 
 const TIME_SPLITS = SPLITS.filter(([key]) => key !== "finish");
 const TABS = [["story", "Minecraft"], ["nether", "Nether"], ["end", "The End"],
@@ -23,16 +24,24 @@ function allColumns(pbs, advancements) {
       cell: (r) => h("a", { href: `#sessions/${r.session_id}`, title: `Open session ${r.session_id}` }, `#${r.session_id}`) },
     { id: "world", group: "Run", label: "World", num: true, value: (r) => r.world_number,
       cell: (r) => (r.world_number == null ? r.world_name : `#${r.world_number}`) },
+    { id: "seed_type", group: "Run", label: "Seed type", title: "The overworld structure looted (needs Hermes)",
+      value: (r) => (r.seed_type ? SEED_TYPE_NAMES[r.seed_type] ?? r.seed_type : null),
+      cell: (r) => seedTypeLabel(r.seed_type) ?? h("span", { class: "muted" }, "–") },
     ...TIME_SPLITS.map(([key, name]) => ({
       id: key, group: "Splits", label: name, icon: key, num: true, value: (r) => r.splits[key],
       cell: (r) => timeCell(r.splits[key], isPb(key, r)),
     })),
     { id: "result", group: "Run", label: "Result", value: (r) => r.result,
       cell: (r) => (r.result === "finished" ? "Finished" : "Reset") },
-    { id: "final_igt", group: "Run", label: "Time", icon: "clock", num: true, title: "In-game time when the run finished or was reset",
+    { id: "final_igt", group: "Run", label: "IGT", num: true, title: "IGT when the run finished or was reset",
       value: (r) => r.final_igt,
       cell: (r) => timeCell(r.final_igt, r.result === "finished" && isPb("finish", r)) },
-    { id: "final_rta", group: "Run", label: "Real time", num: true, title: "Real time when the run finished or was reset",
+    { id: "score", group: "Run", label: "Score", num: true,
+      title: "Seconds lost against a top player on the same seed (finished Hermes runs; lower is better)",
+      value: (r) => r.score,
+      cell: (r) => (r.score == null ? h("span", { class: "muted" }, "–")
+        : h("a", { href: `#score/${encodeURIComponent(r.run_id)}`, title: "How this score is worked out" }, fmt.signedSeconds(r.score))) },
+    { id: "final_rta", group: "Run", label: "RTA", num: true, title: "RTA when the run finished or was reset",
       value: (r) => r.final_rta, cell: (r) => timeCell(r.final_rta, false) },
     { id: "deaths", group: "Deaths", label: "Deaths", num: true, value: (r) => r.deaths,
       cell: (r) => fmt.int(r.deaths) },
@@ -61,25 +70,40 @@ const VIEW_COLUMN = {
                         "aria-label": `View run ${r.world_number == null ? r.world_name : `#${r.world_number}`}` }, "View"),
 };
 
-const DEFAULT_COLUMNS = ["date", "session", "world", ...TIME_SPLITS.map(([k]) => k), "result", "final_igt", "deaths"];
+// Added after 1.2.1: shown once to people who had already picked their columns.
+const NEW_COLUMNS = ["seed_type", "score"];
+const DEFAULT_COLUMNS = ["date", "session", "world", "seed_type", ...TIME_SPLITS.map(([k]) => k), "result", "final_igt",
+                         "score", "deaths"];
 
 /**
  * container: element to fill. storageKey: where the visible columns are remembered.
  * hide: column ids never shown here (e.g. "session" inside a session's own view).
  * picker: false shows the default columns with no Columns button (and no storageKey needed).
- * limit: show only the first N runs in the table's sort order, with no paging.
+ * limit: show only the first N runs in the table's current sort order (sorting all the runs
+ *   given), with no paging.
+ * onSort(sort, column): after a header click, with the column now sorted by.
  * icons: false leaves the icons out of the column headers.
  */
 export function createRunsTable(container, { storageKey, hide = [], sort = { id: "date", dir: "desc" }, empty,
-                                             picker: hasPicker = true, limit = null, icons = true }) {
+                                             picker: hasPicker = true, limit = null, icons = true, onSort = null }) {
   let visible = (hasPicker && JSON.parse(localStorage.getItem(storageKey) || "null")) || DEFAULT_COLUMNS;
+  // Columns added since the visible ones were chosen are shown once; after that, the picker decides.
+  const known = hasPicker && JSON.parse(localStorage.getItem(`${storageKey}:known`) || "null");
+  if (hasPicker && localStorage.getItem(storageKey)) {
+    const added = NEW_COLUMNS.filter((id) => !(known ?? []).includes(id) && !visible.includes(id));
+    if (added.length) visible = [...visible, ...added];  // put in table order by setVisible/columns()
+  }
+  if (hasPicker) localStorage.setItem(`${storageKey}:known`, JSON.stringify(NEW_COLUMNS));
   let data = null;
 
   const picker = h("details", { class: "column-picker" }, h("summary", { class: "button" }, "Columns"));
   const panel = h("div", { class: "picker-panel" });
   picker.append(panel);
   const tableBox = h("div");
-  const table = createTable(tableBox, { sort, pageSize: limit ?? 100, empty: empty ?? "No runs match these filters." });
+  const table = createTable(tableBox, {
+    sort, limit, pageSize: 100, empty: empty ?? "No runs match these filters.",
+    onSort: (s) => onSort?.(s, columns().find((c) => c.id === s.id)),
+  });
   container.replaceChildren(...(hasPicker ? [h("div", { class: "table-toolbar" }, picker)] : []), tableBox);
 
   // Close the picker when clicking elsewhere.
@@ -118,12 +142,6 @@ export function createRunsTable(container, { storageKey, hide = [], sort = { id:
 
   return {
     render(rows, pbs, advancements) {
-      if (limit != null) {  // the first N in the default sort (e.g. the 10 most recent)
-        const col = allColumns(pbs, advancements).find((c) => c.id === sort.id);
-        const dir = sort.dir === "asc" ? 1 : -1;
-        rows = [...rows].sort((a, b) => (col.value(a) < col.value(b) ? -1 : col.value(a) > col.value(b) ? 1 : 0) * dir)
-          .slice(0, limit);
-      }
       data = { rows, pbs, advancements };
       if (hasPicker) buildPicker();
       table.render(rows, columns());

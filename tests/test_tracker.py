@@ -11,7 +11,7 @@ from pathlib import Path
 
 from icy_rsg_tracker import deaths, runs_csv
 from icy_rsg_tracker.config import Config, Instance
-from icy_rsg_tracker.importer import (CHEATS_AT_START, OTHER_INSTANCE, SET_SEED,
+from icy_rsg_tracker.importer import (CHEATS_AT_START, NOT_SURVIVAL, OTHER_INSTANCE, SET_SEED,
                                    import_records)
 from icy_rsg_tracker.records import parse_record, parse_world_number
 from icy_rsg_tracker.timefmt import format_ms, parse_time
@@ -23,10 +23,11 @@ T0 = 1_795_550_000_000
 
 
 def make_record(world, date, rta, timelines=(), advancements=None, completed=False,
-                run_type="random_seed", cheats=False, open_lan=None):
+                run_type="random_seed", cheats=False, open_lan=None, gamemode=0, hardcore=False):
     return {
         "run_type": run_type, "is_completed": completed, "world_name": world,
         "is_cheat_allowed": cheats, "open_lan": open_lan,
+        "default_gamemode": gamemode, "is_hardcore": hardcore,
         "date": date, "final_igt": rta - 10, "final_rta": rta,
         "timelines": [{"name": n, "igt": igt, "rta": igt + 5} for n, igt in timelines],
         "advancements": advancements or {},
@@ -118,6 +119,7 @@ class ImportTest(unittest.TestCase):
                           session_gap_minutes=30)
         self.cfg.records_dir.mkdir(parents=True)
         self.speedrun = self.cfg.instances[0]
+        self.speedrun.world_name_pattern = re.compile(r"^Random Speedrun #\d+$")
 
     def tearDown(self):
         self.tmp.cleanup()
@@ -171,6 +173,56 @@ class ImportTest(unittest.TestCase):
         self.assertEqual({r["world_name"]: r["beds"] for r in self.rows()},
                          {"Random Speedrun #1": "0", "Random Speedrun #2": "0", "Random Speedrun #3": ""})
 
+    def test_watch_waits_for_a_play_log_written_after_the_record(self):
+        # The record arrives first; Hermes writes the play log as the world closes, a moment
+        # later. No other record changes, but the watcher still picks the play log up.
+        self.speedrun.minecraft_dir = Path(self.tmp.name) / "minecraft"
+        t = watch_mod.Tracker(self.cfg, interval=0, out=lambda line: None)
+        with mock.patch.object(watch_mod, "lower_priority"):
+            t.check()                                       # start: nothing yet
+            self.write("a", make_record("Random Speedrun #1", int(datetime.now().timestamp() * 1000), 1000))
+            t.check()                                       # the record: no play log yet
+            self.assertEqual(self.rows()[0]["seed"], "")
+            version = t.version
+            self.play_log("Random Speedrun #1", ("seed", {"seed": 42}), ("close", {}))
+            t.check()                                       # no new record, but still waiting: imports
+        self.assertEqual(self.rows()[0]["seed"], "42")
+        self.assertGreater(t.version, version)              # so the open run page reloads
+        self.assertEqual(t._awaiting_play_log, 0)           # and it stops checking
+
+    def test_hermes_installed(self):
+        from icy_rsg_tracker import hermes
+        mc = Path(self.tmp.name) / "minecraft"
+        self.assertFalse(hermes.installed(mc))              # no mods folder
+        (mc / "mods").mkdir(parents=True)
+        (mc / "mods" / "atum-2.7.2+1.16-1.16.1.jar").touch()
+        self.assertFalse(hermes.installed(mc))
+        (mc / "mods" / "hermes-0.16.0+MC1.16.1.jar").touch()
+        self.assertTrue(hermes.installed(mc))
+
+    def test_unchanged_play_logs_arent_read_again_in_a_rebuild(self):
+        from unittest import mock
+        from icy_rsg_tracker import hermes
+        self.speedrun.minecraft_dir = Path(self.tmp.name) / "minecraft"
+        self.play_log("Random Speedrun #1", ("seed", {"seed": 42}), ("close", {}))
+        self.play_log("Random Speedrun #2", ("seed", {"seed": 7}), ("close", {}))
+        self.write("a", make_record("Random Speedrun #1", T0, 1000))
+        self.write("b", make_record("Random Speedrun #2", T0 + 60_000, 1000))
+        import_records(self.cfg)
+
+        def rebuild():
+            with mock.patch.object(hermes, "read_play_log", wraps=hermes.read_play_log) as read:
+                import_records(self.cfg, rebuild=True)
+            return sorted(c.args[1] for c in read.call_args_list)
+
+        self.assertEqual(rebuild(), [])                               # nothing changed: none read
+        self.assertEqual([r["seed"] for r in self.rows()], ["42", "7"])  # but still filled in
+        self.play_log("Random Speedrun #2", ("seed", {"seed": 8}), ("close", {}), ("close", {}))
+        self.assertEqual(rebuild(), ["Random Speedrun #2"])           # only the changed one
+        self.assertEqual([r["seed"] for r in self.rows()], ["42", "8"])
+        with mock.patch.object(hermes, "PLAY_LOG_VERSION", hermes.PLAY_LOG_VERSION + 1):
+            self.assertEqual(rebuild(), ["Random Speedrun #1", "Random Speedrun #2"])  # a new version: all
+
     def test_seed_play_log_written_after_the_record(self):
         from icy_rsg_tracker.importer import _recheck_play_logs, _InstanceState
         self.speedrun.minecraft_dir = Path(self.tmp.name) / "minecraft"
@@ -198,6 +250,26 @@ class ImportTest(unittest.TestCase):
         self.assertEqual([r["run_id"] for r in self.rows()], ["a"])
         self.assertEqual([r["run_id"] for r in self.rows(ranked)], ["b"])
         self.assertEqual(result.ignored, {OTHER_INSTANCE: 1, CHEATS_AT_START: 1})
+
+    def test_only_survival_worlds_without_cheats(self):
+        self.write("a", make_record("Random Speedrun #1", T0, 1000))
+        self.write("b", make_record("Random Speedrun #2", T0, 1000, gamemode=1))       # creative
+        self.write("c", make_record("Random Speedrun #3", T0, 1000, hardcore=True))
+        self.write("d", make_record("Random Speedrun #4", T0, 1000, cheats=True))      # cheats from start
+        result = import_records(self.cfg)
+        self.assertEqual([r["run_id"] for r in self.rows()], ["a"])
+        self.assertEqual(result.ignored, {NOT_SURVIVAL: 2, CHEATS_AT_START: 1})
+
+    def test_no_pattern_tracks_every_world(self):
+        """A new user's instance has no world name pattern; one with a pattern still comes first."""
+        self.speedrun.world_name_pattern = None
+        self.cfg.instances.insert(0, Instance("ranked", re.compile(r"^mcsrranked")))
+        self.write("a", make_record("Random Speedrun #1", T0, 1000))
+        self.write("b", make_record("New World", T0, 1000))
+        self.write("c", make_record("mcsrranked #abc", T0, 1000))
+        import_records(self.cfg)
+        self.assertEqual([r["run_id"] for r in self.rows()], ["b", "a"])
+        self.assertEqual([r["run_id"] for r in self.rows(self.cfg.instances[0])], ["c"])
 
     def test_result_column(self):
         self.write("a", make_record("Random Speedrun #1", T0, 1000, completed=True))

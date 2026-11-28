@@ -94,7 +94,27 @@ class PhaseTest(unittest.TestCase):
         self.assertEqual(ne["first_rod_ms"], 30_000)
         columns = self.p.summary(None)["columns"]
         self.assertEqual((columns["bastion_time"], columns["first_to_last_rod"]), (41_000 + 5_000, 40_000))
-        self.assertEqual(ne["fortress_slots"], {"0": ["netherrack", 20], "1": ["gold_ingot", 30]})
+        # The bastion was left the last time before the fortress (bastion first).
+        self.assertEqual(ne["inventory"], {"at": "bastion_exit", "slots": {"0": ["netherrack", 20], "1": ["gold_ingot", 30]}})
+
+    def test_inventory_at_bastion_exit_in_a_fort_first_run(self):
+        self.dimension("overworld", "the_nether")
+        self.at(1000); self.inv(s0=("netherrack", 20))
+        self.at(9000); self.structures("fortress")
+        self.at(9000); self.structures()
+        self.at(9000); self.structures("bastion_remnant")
+        self.at(9000); self.inv(s0=("netherrack", 20), s1=("ender_pearl", 12))  # traded
+        self.at(9000); self.structures()
+        self.at(9000); self.inv(s1=("ender_pearl", 10))  # after leaving: not shown
+        self.assertEqual(self.p.summary(None)["nether"]["inventory"],
+                         {"at": "bastion_exit", "slots": {"0": ["netherrack", 20], "1": ["ender_pearl", 12]}})
+
+    def test_inventory_at_fortress_enter_without_a_bastion(self):
+        self.dimension("overworld", "the_nether")
+        self.at(1000); self.inv(s0=("netherrack", 20))
+        self.at(9000); self.structures("fortress")
+        self.assertEqual(self.p.summary(None)["nether"]["inventory"],
+                         {"at": "fortress_enter", "slots": {"0": ["netherrack", 20]}})
 
     def test_blind_and_stronghold(self):
         self.dimension("overworld", "the_nether")
@@ -130,6 +150,46 @@ class PhaseTest(unittest.TestCase):
         self.assertEqual((c["last_structure"], c["bucket_1"]), ("village", 12_500))
         self.assertEqual(c["bucket_1"] + c["bucket_2"], 41_000 - 1000)  # everything before the nether
 
+    def test_a_ruined_portal_is_the_seed_type_only_when_its_the_only_one(self):
+        for others, expected in ((["village"], "village"), ([], "ruined_portal")):
+            self.setUp()
+            self.stat("minecraft.custom:minecraft.jump")
+            for name in [*others, "ruined_portal"]:          # the portal looted last
+                self.at(1000); self.chest(); self.at(1000); self.structures(name)
+                self.at(5000); self.structures()
+            before = self.p.summary(None)["columns"]["last_structure"]  # before the nether, too
+            self.at(10_000); self.dimension("overworld", "the_nether")
+            self.assertEqual((before, self.p.summary(None)["columns"]["last_structure"]), (expected, expected))
+
+    def test_a_ruined_portals_bucket_1_ends_when_its_chest_closes(self):
+        self.stat("minecraft.custom:minecraft.jump")          # real time 1 s
+        self.at(5000); self.structures("ruined_portal")       # 6 s
+        self.at(2000); self.chest()                           # opened at 8 s, closed at 8.5 s
+        self.at(40_000); self.dimension("overworld", "the_nether")  # lit at the portal: never left it
+        c = self.p.summary(None)["columns"]
+        self.assertEqual((c["last_structure"], c["bucket_1"], c["bucket_2"]), ("ruined_portal", 8_500, 39_000))  # timing starts at the first event (1 s)
+
+    def test_a_ruined_portal_chest_opened_just_before_hermes_notices(self):
+        self.stat("minecraft.custom:minecraft.jump")
+        self.at(5000); self.chest()                           # opened at 6 s, closed at 6.5 s
+        self.at(500); self.structures("ruined_portal")        # Hermes says inside it at 7 s
+        self.at(20_000); self.structures()
+        self.at(10_000); self.dimension("overworld", "the_nether")
+        c = self.p.summary(None)["columns"]
+        self.assertEqual((c["last_structure"], c["bucket_1"]), ("ruined_portal", 6_500))
+
+    def test_buried_treasure_from_a_chest_outside_any_structure(self):
+        # Hermes never reports being inside a buried treasure (its structure is the chest block).
+        self.stat("minecraft.custom:minecraft.jump")         # real time 1 s
+        self.at(20_000); self.chest()                        # opened at 21 s, closed at 21.5 s
+        self.at(5000); self.chest()                          # 26.5-27 s: the same treasure, opened again
+        self.at(30_000); self.chest()                        # 57 s: a chest somewhere else
+        self.at(10_000); self.dimension("overworld", "the_nether")
+        self.p.add_buried_treasures(lambda time: time < 1_050_000)  # only the first two are at a treasure
+        c = self.p.summary(None)["columns"]
+        self.assertEqual(self.p.summary(None)["overworld"]["structures"], [{"structure": "buried_treasure", "looted": True}])
+        self.assertEqual((c["last_structure"], c["bucket_1"]), ("buried_treasure", 27_000))  # the last close
+
     def test_one_cycle_hit(self):
         for wait, hit in ((12_000, 1), (150_000, 0)):
             self.setUp()
@@ -138,6 +198,25 @@ class PhaseTest(unittest.TestCase):
             self.at(60_000); self.dimension("overworld", "the_end")
             self.at(200_000); self.stat("minecraft.used:minecraft.white_bed", 4)  # a late perch: fine
             self.at(wait); self.stat("minecraft.killed:minecraft.ender_dragon")
+            self.assertEqual(self.p.summary(None)["columns"]["one_cycle_hit"], hit)
+
+    def test_one_cycle_with_a_bed_kill(self):
+        """A bed or anchor kill isn't the player's (no kill stat): leaving through the exit portal
+        says the last blast killed the dragon. Anchors placed early and a bed placed to land on and
+        broken again aren't the first blast."""
+        for last_bed, hit in ((3_000, 1), (40_000, 0)):
+            self.setUp()
+            self.stat("minecraft.custom:minecraft.jump")
+            self.at(60_000); self.dimension("overworld", "the_nether")
+            self.at(60_000); self.dimension("overworld", "the_end")
+            self.at(5_000); self.stat("minecraft.used:minecraft.white_bed")    # to land on
+            self.at(1_000); self.stat("minecraft.mined:minecraft.white_bed")
+            self.at(10_000); self.stat("minecraft.used:minecraft.respawn_anchor", 3)  # set up early
+            self.at(60_000); self.stat("minecraft.used:minecraft.white_bed")
+            self.at(last_bed); self.stat("minecraft.used:minecraft.white_bed")
+            self.assertIsNone(self.p.summary(None)["columns"]["one_cycle_hit"])  # still fighting
+            self.at(15_000); self.send("respawn", {"was_alive": True})
+            self.dimension("the_end", "overworld")
             self.assertEqual(self.p.summary(None)["columns"]["one_cycle_hit"], hit)
 
     def test_structureless(self):

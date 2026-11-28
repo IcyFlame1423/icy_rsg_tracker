@@ -36,6 +36,7 @@ export const dashboard = {
 
     recentTable = createRunsTable($("recent-runs"), {
       picker: false, icons: false, limit: RECENT, empty: () => `No runs in this time window match the filters (${describeFilters()}).`,
+      onSort: (sort, column) => { recentSort = { ...sort, label: column?.label }; recentNote(); },
     });
   },
 
@@ -64,25 +65,25 @@ function render(s) {
     ? "No runs tracked yet. Play a run with SpeedRunIGT and it will show up here."
     : "No runs in this time window.";
   if (empty) return;
-  renderKpis(st, s.sessions.length);
+  renderKpis(st);
   renderMeters(st);
   renderSplitTable(st);
   renderRecent();
 }
 
-function renderKpis(st, sessionCount) {
-  const nether = st.splits.nether, finish = st.splits.finish;
+function renderKpis(st) {
+  const nether = st.splits.nether;
   $("hero-art").replaceChildren(icon("nether") ?? "");
   $("hero-value").textContent = st.nethers_per_hour == null ? "–" : fmt.num(st.nethers_per_hour, 2);
   $("hero-sub").textContent = `${plural(nether.count, "nether")} in ${fmt.duration(st.time_span_s)}`;
   const playedResets = st.runs_played - st.finished;
   $("tiles").replaceChildren(
-    withArt(tile("Runs played", fmt.int(st.runs_played), plural(sessionCount, "session")), "runs"),
+    withArt(tile("Runs played", fmt.int(st.runs_played)), "runs"),
     withArt(tile("Total resets", fmt.int(st.total_resets), `${fmt.int(st.wall_resets)} wall · ${fmt.int(playedResets)} played`), "resets"),
     withArt(tile("Resets per nether", fmt.num(st.resets_per_nether, 1)), "netherrack"),
-    withArt(tile("Average nether", fmt.timeTenths(nether.avg_ms), nether.best_ms == null ? "" : `best ${fmt.time(nether.best_ms)}`), "nether"),
+    withArt(tile("Average nether", fmt.timeTenths(nether.avg_ms)), "nether"),
     withArt(tile("Time played", fmt.duration(st.time_span_s), `${fmt.duration(st.playtime_s)} in worlds`), "clock"),
-    withArt(tile("Completions", fmt.int(st.finished), finish.best_ms == null ? "" : `PB ${fmt.time(finish.best_ms)}`), "finish"),
+    withArt(tile("Completions", fmt.int(st.finished)), "finish"),
   );
 }
 
@@ -99,7 +100,7 @@ function withArt(tileNode, key) {
 function renderMeters(st) {
   const byRuns = local.progressionBase === "runs";
   $("progression-note").textContent = byRuns
-    ? "Share of all runs played that reached each split. Bars are scaled to the nether, so they're easier to compare."
+    ? "Share of all runs played that reached each split."
     : "Share of runs that reached the previous split (nether: of runs played).";
   const nethers = st.splits.nether.count;
   $("meters").replaceChildren(...PROGRESSION.flatMap(([key, name], i) => {
@@ -148,11 +149,26 @@ function buildRecentFilters() {
   $("recent-filters").replaceChildren(...filterControls(() => { if (local.runs) renderRecent(); }));
 }
 
+// What the recent runs table is sorted by (the newest first until a header is clicked).
+let recentSort = { id: "date", dir: "desc" };
+
 function renderRecent() {
-  const { runs, pbs, advancements } = local.runs;
+  const { runs, advancements } = local.runs;
   const matching = runs.filter(matches);
-  recentTable.render(matching, pbs, advancements);
-  $("recent-note").textContent = matching.length > RECENT
-    ? `The latest ${RECENT} of ${fmt.int(matching.length)} matching runs in this window`
-    : `${plural(matching.length, "matching run")} in this window`;
+  recentTable.render(matching, {}, advancements);  // no PB badges here; sorts all of them, shows RECENT
+  recentNote();
+}
+
+function recentNote() {
+  const n = local.runs.runs.filter(matches).length;
+  if (n <= RECENT) {
+    $("recent-note").textContent = `${plural(n, "matching run")} in this window`;
+  } else if (recentSort.id === "date") {
+    $("recent-note").textContent =
+      `The ${recentSort.dir === "desc" ? "latest" : "earliest"} ${RECENT} of ${fmt.int(n)} matching runs in this window`;
+  } else {
+    const order = recentSort.dir === "asc" ? "lowest first" : "highest first";
+    $("recent-note").textContent =
+      `The first ${RECENT} of ${fmt.int(n)} matching runs in this window, by ${recentSort.label ?? "this column"} (${order})`;
+  }
 }

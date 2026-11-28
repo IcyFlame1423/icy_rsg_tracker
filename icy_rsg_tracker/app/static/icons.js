@@ -387,15 +387,16 @@ function itemDef(id) {
 
 /** Any item's icon with its stack count drawn in the corner (none for 1), or null without
  *  the game's textures. Removed if the item can't be drawn. */
-export function itemIcon(id, count = 1, { className = "" } = {}) {
+export function itemIcon(id, count = 1, { className = "", showOne = false } = {}) {
   if (!state.textures) return null;
   const img = h("img", { class: "icon-item", alt: "" });
   const slot = h("span", { class: `icon ${className}`.trim(), "aria-hidden": "true" }, img);
-  const key = `item:${id}:${count}`;
+  const shown = count > 1 || (showOne && count === 1) ? count : "";  // like the game: no number for one
+  const key = `item:${id}:${shown}`;
   if (!rendered.has(key)) {
     rendered.set(key, itemDef(id).then((def) => {
       if (!def) throw new Error(`no icon for ${id}`);
-      return renderCounted(def, count > 1 ? count : "");  // like the game: no number for one
+      return renderCounted(def, shown);
     }));
   }
   rendered.get(key).then((url) => { img.src = url; }, () => slot.remove());
