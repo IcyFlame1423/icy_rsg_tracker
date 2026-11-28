@@ -72,21 +72,23 @@ const VIEW_COLUMN = {
 
 // Added after 1.2.1: shown once to people who had already picked their columns.
 const NEW_COLUMNS = ["seed_type", "score"];
-const DEFAULT_COLUMNS = ["date", "session", "world", "seed_type", ...TIME_SPLITS.map(([k]) => k), "result", "final_igt",
+export const DEFAULT_COLUMNS = ["date", "session", "world", "seed_type", ...TIME_SPLITS.map(([k]) => k), "result", "final_igt",
                          "score", "deaths"];
 
 /**
  * container: element to fill. storageKey: where the visible columns are remembered.
  * hide: column ids never shown here (e.g. "session" inside a session's own view).
  * picker: false shows the default columns with no Columns button (and no storageKey needed).
+ * columns: with picker false, the column ids to show instead of the defaults.
  * limit: show only the first N runs in the table's current sort order (sorting all the runs
  *   given), with no paging.
  * onSort(sort, column): after a header click, with the column now sorted by.
  * icons: false leaves the icons out of the column headers.
  */
 export function createRunsTable(container, { storageKey, hide = [], sort = { id: "date", dir: "desc" }, empty,
-                                             picker: hasPicker = true, limit = null, icons = true, onSort = null }) {
-  let visible = (hasPicker && JSON.parse(localStorage.getItem(storageKey) || "null")) || DEFAULT_COLUMNS;
+                                             picker: hasPicker = true, columns: fixed = null, limit = null,
+                                             icons = true, onSort = null }) {
+  let visible = (hasPicker && JSON.parse(localStorage.getItem(storageKey) || "null")) || fixed || DEFAULT_COLUMNS;
   // Columns added since the visible ones were chosen are shown once; after that, the picker decides.
   const known = hasPicker && JSON.parse(localStorage.getItem(`${storageKey}:known`) || "null");
   if (hasPicker && localStorage.getItem(storageKey)) {

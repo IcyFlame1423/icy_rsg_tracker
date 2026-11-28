@@ -124,7 +124,9 @@ BUCKET_NAMES = {
 # longer distance costs a slower player more. Each tier's median ratio is fitted with a logistic
 # curve in Elo (R2 0.88-0.99) and read at the middle of the tier:
 # - total: the finish (the End capped, as in the score) / the top players' total;
-# - the parts (see RANK_PARTS); the End uncapped (Ranked has no explosive counts).
+# - the parts (see RANK_PARTS); the End uncapped (Ranked has no explosive counts), against W_10.
+#   A run's End is ranked against what a top player is expected to take with its explosives and
+#   pearls instead (bucket 10's expected: W_10, C with a forced one cycle, or the multi-cycle median).
 # Top 30 is the top-player sample's own medians. Below Iron I is Coal (its runs vary too much).
 # (tier, {"total" or part: time / top-player time}), worst first.
 RANKS = [
@@ -268,10 +270,10 @@ def score(row):
     parts = []
     for key, numbers in RANK_PARTS.items():
         shown = sum(buckets[i - 1]["expected"] for i in numbers)  # the table's expected
-        if key == "End":  # uncapped, like the Ranked samples: against W_10
-            time, base = end_time, W[10]
-        else:
-            time, base = sum(t[i] for i in numbers), shown
+        # The End uncapped, like the Ranked samples, against the expected End for the run's
+        # explosives and pearls (a one cycle forced by few of either, or a two or more cycle).
+        time = end_time if key == "End" else sum(t[i] for i in numbers)
+        base = shown
         ratio = time / base
         parts.append({"part": key, "name": RANK_PART_NAMES[key], "buckets": list(numbers),
                       "ratio": ratio, "rank": rank_for(ratio, key),

@@ -167,7 +167,7 @@ function bucketsCard(sc) {
   return h("section", { class: "card spaced" },
     h("h2", {}, "This run, bucket by bucket"),
     h("p", { class: "sub" }, "Expected = top-player RTA × seed difficulty + allowances. Lost = the run's RTA − expected. ",
-      "Rank: the best MCSR Ranked tier whose typical run this part matches or beats (its RTA ÷ the expected RTA; the End uncapped). ",
+      "Rank: the best MCSR Ranked tier whose typical run this part matches or beats (its RTA ÷ the expected RTA; the End uncapped, against the End expected with the run's explosives and pearls). ",
       "Buckets 1–2 and 4–5 are ranked together; buckets 3 and 6 aren't ranked, since they vary little with skill-level. ",
       "Click a bucket to see each rank's cutoff for its part."),
     h("div", { class: "table-scroll" }, h("table", { class: "data-table score-table" },

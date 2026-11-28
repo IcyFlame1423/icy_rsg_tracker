@@ -71,6 +71,25 @@ class ScoreTest(unittest.TestCase):
             self.assertIn(part["rank"], ("Top 30", "Netherite"), part["name"])
         self.assertEqual(sc["unranked_buckets"], [3, 6])
 
+    def test_the_end_is_ranked_against_its_explosives_and_pearls(self):
+        """A top player's End for the run's resources is 1.0x on the End part: a one cycle (C)
+        with 3 explosives or 1 pearl, the two cycle's median with 2 explosives, and so on."""
+        def end_part(end_s, **kw):
+            r = row(**kw)
+            inputs = model.score(r)["inputs"]
+            total = inputs["final_rta"] - inputs["end_time"] + end_s
+            r["final_rta"] = f"{int(total // 60)}:{total % 60:06.3f}"
+            return next(p for p in model.score(r)["parts"] if p["part"] == "End")
+        for end_s, kw in ((model.C, {"explosives": "3"}), (model.C, {"ender_pearls": "1"}),
+                          (model.MULTI_CYCLE[2][0], {"explosives": "2"}),
+                          (model.MULTI_CYCLE[0][0], {"explosives": "0"}),
+                          (model.W[10], {})):
+            part = end_part(end_s, **kw)
+            self.assertAlmostEqual(part["ratio"], 1.0, places=3, msg=kw)
+            self.assertIn(part["rank"], ("Top 30", "Netherite"), kw)
+        # The same 90 s End ranks worse with every resource than with a forced one cycle.
+        self.assertGreater(end_part(model.C)["ratio"], end_part(model.C, explosives="3")["ratio"])
+
     def test_overworld_distance_at_a_travel_speed(self):
         far = model.score(row(spawn_to_structure="64", structure_to_portal="160"))["buckets"]
         self.assertAlmostEqual(far[0]["expected"] - model.OVERWORLD["shipwreck"][0], 0.15 * 32, places=2)   # shipwreck: 0.15 s/block

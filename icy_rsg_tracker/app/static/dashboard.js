@@ -2,7 +2,7 @@
 import * as fmt from "./fmt.js";
 import { showTooltip, hideTooltip } from "./charts.js";
 import { $, getJSON, h, latestOnly, plural, PROGRESSION, state, tile, windowQuery } from "./common.js";
-import { createRunsTable } from "./runs-table.js";
+import { createRunsTable, DEFAULT_COLUMNS } from "./runs-table.js";
 import { icon, iconSlot } from "./icons.js";
 import { describeFilters, filterControls, matches, syncControls } from "./run-filters.js";
 
@@ -13,6 +13,9 @@ const local = {
   progressionBase: localStorage.getItem("progressionBase") || "previous",  // "runs" | "previous"
 };
 let recentTable = null;
+// The Recent runs columns: the Runs page's defaults, with RTA instead of score and deaths
+// (shown in table order, so RTA comes after IGT).
+const RECENT_COLUMNS = [...DEFAULT_COLUMNS.filter((id) => id !== "score" && id !== "deaths"), "final_rta"];
 
 const fetchData = latestOnly(() => Promise.all([
   getJSON(`/api/summary?${windowQuery()}`),
@@ -35,7 +38,7 @@ export const dashboard = {
     sync();
 
     recentTable = createRunsTable($("recent-runs"), {
-      picker: false, icons: false, limit: RECENT, empty: () => `No runs in this time window match the filters (${describeFilters()}).`,
+      picker: false, icons: false, limit: RECENT, columns: RECENT_COLUMNS, empty: () => `No runs in this time window match the filters (${describeFilters()}).`,
       onSort: (sort, column) => { recentSort = { ...sort, label: column?.label }; recentNote(); },
     });
   },
